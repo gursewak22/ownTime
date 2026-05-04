@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { services } from '@/services/registry';
-import type { LayoutNode, LeafNode } from './types';
+import type { LayoutNode, LeafNode, SplitNode } from './types';
 
 export function makeLeaf(serviceId: string): LeafNode {
   return { type: 'leaf', id: uuid(), serviceId };
@@ -35,6 +35,56 @@ export function appendPanel(
     direction,
     children: [root, newLeaf],
     sizes: [50, 50],
+  };
+}
+
+/**
+ * Split a specific leaf (or split) in place. If the parent split is already in the same
+ * direction, the new leaf is inserted as a direct sibling next to the target. Otherwise,
+ * the target is wrapped in a new sub-split.
+ */
+export function splitAt(
+  root: LayoutNode,
+  targetId: string,
+  serviceId: string,
+  direction: 'horizontal' | 'vertical',
+): LayoutNode {
+  const newLeaf = makeLeaf(serviceId);
+
+  if (root.id === targetId) {
+    return {
+      type: 'split',
+      id: uuid(),
+      direction,
+      children: [root, newLeaf],
+      sizes: [50, 50],
+    };
+  }
+
+  if (root.type === 'leaf') return root;
+
+  const childIndex = root.children.findIndex((c) => c.id === targetId);
+  if (childIndex !== -1) {
+    if (root.direction === direction) {
+      const next = [...root.children];
+      next.splice(childIndex + 1, 0, newLeaf);
+      return { ...root, children: next, sizes: equalSizes(next.length) };
+    }
+    const wrapped: SplitNode = {
+      type: 'split',
+      id: uuid(),
+      direction,
+      children: [root.children[childIndex], newLeaf],
+      sizes: [50, 50],
+    };
+    const next = [...root.children];
+    next[childIndex] = wrapped;
+    return { ...root, children: next };
+  }
+
+  return {
+    ...root,
+    children: root.children.map((c) => splitAt(c, targetId, serviceId, direction)),
   };
 }
 

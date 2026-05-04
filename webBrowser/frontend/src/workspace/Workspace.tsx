@@ -8,11 +8,22 @@ type Props = {
   node: LayoutNode;
   onRemove: (nodeId: string) => void;
   onResize: (splitId: string, sizes: number[]) => void;
+  onSplit: (
+    targetId: string,
+    serviceId: string,
+    direction: 'horizontal' | 'vertical',
+  ) => void;
 };
 
-export function Workspace({ node, onRemove, onResize }: Props) {
+export function Workspace({ node, onRemove, onResize, onSplit }: Props) {
   if (node.type === 'leaf') {
-    return <PanelFrame serviceId={node.serviceId} onClose={() => onRemove(node.id)} />;
+    return (
+      <PanelFrame
+        serviceId={node.serviceId}
+        onClose={() => onRemove(node.id)}
+        onSplit={(serviceId, direction) => onSplit(node.id, serviceId, direction)}
+      />
+    );
   }
 
   return (
@@ -31,7 +42,12 @@ export function Workspace({ node, onRemove, onResize }: Props) {
             />
           )}
           <Panel defaultSize={node.sizes[i] ?? 100 / node.children.length} minSize={10}>
-            <Workspace node={child} onRemove={onRemove} onResize={onResize} />
+            <Workspace
+              node={child}
+              onRemove={onRemove}
+              onResize={onResize}
+              onSplit={onSplit}
+            />
           </Panel>
         </Fragment>
       ))}

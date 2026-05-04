@@ -1,13 +1,15 @@
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { getService } from '@/services/registry';
+import { SplitMenu } from './SplitMenu';
 
 type Props = {
   serviceId: string;
   onClose: () => void;
+  onSplit: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
 };
 
-export function PanelFrame({ serviceId, onClose }: Props) {
+export function PanelFrame({ serviceId, onClose, onSplit }: Props) {
   const service = getService(serviceId);
 
   return (
@@ -23,15 +25,19 @@ export function PanelFrame({ serviceId, onClose }: Props) {
             <span className="text-danger">Unknown service: {serviceId}</span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={onClose}
-          aria-label="Close panel"
-        >
-          <X className="h-4 w-4 text-muted" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <SplitMenu onSplit={onSplit} />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onClose}
+            aria-label="Close panel"
+            title="Close panel"
+          >
+            <X className="h-4 w-4 text-muted" />
+          </Button>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {service ? service.panelElement : null}

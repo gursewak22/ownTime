@@ -7,7 +7,8 @@ import { Workspace } from './Workspace';
 import { useWorkspaceLayout } from './use-workspace-layout';
 
 export function WorkspaceShell() {
-  const { layout, isLoading, addPanel, removePanel, resize, reset } = useWorkspaceLayout();
+  const { layout, isLoading, addPanel, splitPanel, removePanel, resize, reset } =
+    useWorkspaceLayout();
 
   return (
     <div className="flex h-full flex-col">
@@ -40,7 +41,12 @@ export function WorkspaceShell() {
         {isLoading ? (
           <CenteredHint>Loading workspace…</CenteredHint>
         ) : layout ? (
-          <Workspace node={layout} onRemove={removePanel} onResize={resize} />
+          <Workspace
+            node={layout}
+            onRemove={removePanel}
+            onResize={resize}
+            onSplit={splitPanel}
+          />
         ) : (
           <EmptyWorkspace onAdd={(id) => addPanel(id, 'horizontal')} />
         )}

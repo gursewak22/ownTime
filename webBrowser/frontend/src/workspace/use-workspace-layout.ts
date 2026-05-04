@@ -6,6 +6,7 @@ import {
   isLayoutNode,
   pruneUnknownServices,
   removeNode,
+  splitAt,
   updateSizes,
 } from './layout-ops';
 import type { LayoutNode } from './types';
@@ -16,6 +17,11 @@ type WorkspaceLayout = {
   layout: LayoutNode | null;
   isLoading: boolean;
   addPanel: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
+  splitPanel: (
+    targetId: string,
+    serviceId: string,
+    direction: 'horizontal' | 'vertical',
+  ) => void;
   removePanel: (nodeId: string) => void;
   resize: (splitId: string, sizes: number[]) => void;
   reset: () => void;
@@ -59,6 +65,13 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     [],
   );
 
+  const splitPanel = useCallback(
+    (targetId: string, serviceId: string, direction: 'horizontal' | 'vertical') => {
+      setLayout((current) => (current ? splitAt(current, targetId, serviceId, direction) : current));
+    },
+    [],
+  );
+
   const removePanel = useCallback((nodeId: string) => {
     setLayout((current) => (current ? removeNode(current, nodeId) : null));
   }, []);
@@ -73,6 +86,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     layout,
     isLoading: stored.isLoading,
     addPanel,
+    splitPanel,
     removePanel,
     resize,
     reset,
