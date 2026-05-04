@@ -6,9 +6,10 @@ import { services } from '@/services/registry';
 
 type Props = {
   onAdd: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
+  disabledServiceIds: ReadonlySet<string>;
 };
 
-export function AddPanelMenu({ onAdd }: Props) {
+export function AddPanelMenu({ onAdd, disabledServiceIds }: Props) {
   const [open, setOpen] = useState(false);
   const [direction, setDirection] = useState<'horizontal' | 'vertical'>('horizontal');
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -50,18 +51,32 @@ export function AddPanelMenu({ onAdd }: Props) {
           </div>
           {services.map((s) => {
             const Icon = s.icon;
+            const disabled = disabledServiceIds.has(s.id);
             return (
               <button
                 key={s.id}
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/10"
+                disabled={disabled}
+                title={disabled ? `${s.label} can only have one panel` : undefined}
+                className={cn(
+                  'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
+                  disabled
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'hover:bg-muted/10',
+                )}
                 onClick={() => {
+                  if (disabled) return;
                   onAdd(s.id, direction);
                   setOpen(false);
                 }}
               >
                 <Icon className="h-4 w-4 text-muted" />
-                {s.label}
+                <span className="flex-1">{s.label}</span>
+                {disabled && (
+                  <span className="text-[10px] uppercase tracking-wider text-muted">
+                    single
+                  </span>
+                )}
               </button>
             );
           })}

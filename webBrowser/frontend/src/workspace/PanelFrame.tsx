@@ -5,12 +5,21 @@ import { SplitMenu } from './SplitMenu';
 
 type Props = {
   serviceId: string;
+  instanceId: string;
   onClose: () => void;
   onSplit: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
+  disabledServiceIds: ReadonlySet<string>;
 };
 
-export function PanelFrame({ serviceId, onClose, onSplit }: Props) {
+export function PanelFrame({
+  serviceId,
+  instanceId,
+  onClose,
+  onSplit,
+  disabledServiceIds,
+}: Props) {
   const service = getService(serviceId);
+  const PanelComponent = service?.panelComponent;
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -26,7 +35,7 @@ export function PanelFrame({ serviceId, onClose, onSplit }: Props) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <SplitMenu onSplit={onSplit} />
+          <SplitMenu onSplit={onSplit} disabledServiceIds={disabledServiceIds} />
           <Button
             variant="ghost"
             size="icon"
@@ -40,7 +49,7 @@ export function PanelFrame({ serviceId, onClose, onSplit }: Props) {
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {service ? service.panelElement : null}
+        {PanelComponent ? <PanelComponent instanceId={instanceId} /> : null}
       </div>
     </div>
   );

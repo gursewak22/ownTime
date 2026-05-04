@@ -9,7 +9,7 @@ import { useDeleteTodo, useTodos, useUpdateTodo } from '../hooks';
 
 type SortKey = 'createdAt' | 'title';
 
-export function TodoListPage() {
+export function TodoListPage(_props: { instanceId: string }) {
   const todos = useTodos();
   const update = useUpdateTodo();
   const remove = useDeleteTodo();

@@ -5,9 +5,10 @@ import { services } from '@/services/registry';
 
 type Props = {
   onSplit: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
+  disabledServiceIds: ReadonlySet<string>;
 };
 
-export function SplitMenu({ onSplit }: Props) {
+export function SplitMenu({ onSplit, disabledServiceIds }: Props) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -51,14 +52,23 @@ export function SplitMenu({ onSplit }: Props) {
           <ul className="py-1">
             {services.map((s) => {
               const Icon = s.icon;
+              const disabled = disabledServiceIds.has(s.id);
               return (
                 <li
                   key={s.id}
-                  className="flex items-center justify-between gap-2 px-2 py-1 text-sm hover:bg-muted/10"
+                  className={`flex items-center justify-between gap-2 px-2 py-1 text-sm ${
+                    disabled ? 'opacity-50' : 'hover:bg-muted/10'
+                  }`}
+                  title={disabled ? `${s.label} can only have one panel` : undefined}
                 >
                   <span className="flex min-w-0 items-center gap-2 px-1">
                     <Icon className="h-4 w-4 shrink-0 text-muted" />
                     <span className="truncate">{s.label}</span>
+                    {disabled && (
+                      <span className="text-[10px] uppercase tracking-wider text-muted">
+                        single
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 gap-1">
                     <button
@@ -66,8 +76,10 @@ export function SplitMenu({ onSplit }: Props) {
                       type="button"
                       title="Add to the right"
                       aria-label={`Add ${s.label} to the right`}
-                      className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-muted/10 hover:text-fg"
+                      disabled={disabled}
+                      className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-muted/10 hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted"
                       onClick={() => {
+                        if (disabled) return;
                         onSplit(s.id, 'horizontal');
                         setOpen(false);
                       }}
@@ -79,8 +91,10 @@ export function SplitMenu({ onSplit }: Props) {
                       type="button"
                       title="Add below"
                       aria-label={`Add ${s.label} below`}
-                      className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-muted/10 hover:text-fg"
+                      disabled={disabled}
+                      className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-muted/10 hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted"
                       onClick={() => {
+                        if (disabled) return;
                         onSplit(s.id, 'vertical');
                         setOpen(false);
                       }}

@@ -13,15 +13,18 @@ type Props = {
     serviceId: string,
     direction: 'horizontal' | 'vertical',
   ) => void;
+  disabledServiceIds: ReadonlySet<string>;
 };
 
-export function Workspace({ node, onRemove, onResize, onSplit }: Props) {
+export function Workspace({ node, onRemove, onResize, onSplit, disabledServiceIds }: Props) {
   if (node.type === 'leaf') {
     return (
       <PanelFrame
         serviceId={node.serviceId}
+        instanceId={node.id}
         onClose={() => onRemove(node.id)}
         onSplit={(serviceId, direction) => onSplit(node.id, serviceId, direction)}
+        disabledServiceIds={disabledServiceIds}
       />
     );
   }
@@ -47,6 +50,7 @@ export function Workspace({ node, onRemove, onResize, onSplit }: Props) {
               onRemove={onRemove}
               onResize={onResize}
               onSplit={onSplit}
+              disabledServiceIds={disabledServiceIds}
             />
           </Panel>
         </Fragment>

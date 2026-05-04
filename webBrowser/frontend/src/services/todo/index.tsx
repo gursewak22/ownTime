@@ -6,5 +6,6 @@ export const todoModule: ServiceModule = {
   id: 'todo',
   label: 'Todo',
   icon: ListChecks,
-  panelElement: <TodoListPage />,
+  panelComponent: TodoListPage,
+  singleton: true,
 };

@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePreference } from '@/preferences/use-preference';
+import { services } from '@/services/registry';
 import {
   appendPanel,
+  collectServiceIds,
   defaultLayout,
+  enforceSingletons,
   isLayoutNode,
   pruneUnknownServices,
   removeNode,
@@ -16,6 +19,8 @@ const PERSIST_DEBOUNCE_MS = 400;
 type WorkspaceLayout = {
   layout: LayoutNode | null;
   isLoading: boolean;
+  /** Service ids that should NOT be offered in Add/Split menus (singletons already in the tree). */
+  disabledServiceIds: ReadonlySet<string>;
   addPanel: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
   splitPanel: (
     targetId: string,
@@ -31,12 +36,13 @@ export function useWorkspaceLayout(): WorkspaceLayout {
   const stored = usePreference<unknown>('shell', 'layout', null);
   const [layout, setLayout] = useState<LayoutNode | null>(null);
 
-  // Hydrate from stored prefs, validating and pruning along the way.
+  // Hydrate from stored prefs, validating + pruning + enforcing singletons.
   useEffect(() => {
     if (stored.isLoading) return;
     const validated = isLayoutNode(stored.value) ? stored.value : null;
     const pruned = validated ? pruneUnknownServices(validated) : null;
-    setLayout(pruned ?? defaultLayout());
+    const sanitized = pruned ? enforceSingletons(pruned) : null;
+    setLayout(sanitized ?? defaultLayout());
     // We intentionally only re-hydrate when the user changes (which makes
     // stored.isLoading flip back to true and value reload from the server).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,9 +88,19 @@ export function useWorkspaceLayout(): WorkspaceLayout {
 
   const reset = useCallback(() => setLayout(defaultLayout()), []);
 
+  const disabledServiceIds = useMemo(() => {
+    const present = collectServiceIds(layout);
+    const disabled = new Set<string>();
+    for (const svc of services) {
+      if (svc.singleton && present.has(svc.id)) disabled.add(svc.id);
+    }
+    return disabled;
+  }, [layout]);
+
   return {
     layout,
     isLoading: stored.isLoading,
+    disabledServiceIds,
     addPanel,
     splitPanel,
     removePanel,

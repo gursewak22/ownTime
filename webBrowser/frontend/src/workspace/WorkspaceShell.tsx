@@ -7,8 +7,16 @@ import { Workspace } from './Workspace';
 import { useWorkspaceLayout } from './use-workspace-layout';
 
 export function WorkspaceShell() {
-  const { layout, isLoading, addPanel, splitPanel, removePanel, resize, reset } =
-    useWorkspaceLayout();
+  const {
+    layout,
+    isLoading,
+    disabledServiceIds,
+    addPanel,
+    splitPanel,
+    removePanel,
+    resize,
+    reset,
+  } = useWorkspaceLayout();
 
   return (
     <div className="flex h-full flex-col">
@@ -22,7 +30,7 @@ export function WorkspaceShell() {
         </div>
 
         <div className="flex items-center gap-3">
-          <AddPanelMenu onAdd={addPanel} />
+          <AddPanelMenu onAdd={addPanel} disabledServiceIds={disabledServiceIds} />
           <Button
             variant="ghost"
             size="sm"
@@ -46,6 +54,7 @@ export function WorkspaceShell() {
             onRemove={removePanel}
             onResize={resize}
             onSplit={splitPanel}
+            disabledServiceIds={disabledServiceIds}
           />
         ) : (
           <EmptyWorkspace onAdd={(id) => addPanel(id, 'horizontal')} />

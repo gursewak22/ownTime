@@ -143,6 +143,40 @@ export function pruneUnknownServices(root: LayoutNode): LayoutNode | null {
   return { ...root, children: kept, sizes: equalSizes(kept.length) };
 }
 
+/** Drop duplicate panels of singleton services, keeping the first occurrence. */
+export function enforceSingletons(root: LayoutNode): LayoutNode | null {
+  const seen = new Set<string>();
+  function walk(node: LayoutNode): LayoutNode | null {
+    if (node.type === 'leaf') {
+      const svc = services.find((s) => s.id === node.serviceId);
+      if (svc?.singleton) {
+        if (seen.has(svc.id)) return null;
+        seen.add(svc.id);
+      }
+      return node;
+    }
+    const kept = node.children
+      .map(walk)
+      .filter((c): c is LayoutNode => c !== null);
+    if (kept.length === 0) return null;
+    if (kept.length === 1) return kept[0];
+    return { ...node, children: kept, sizes: equalSizes(kept.length) };
+  }
+  return walk(root);
+}
+
+/** Collect every service id present anywhere in the tree (no duplicates). */
+export function collectServiceIds(root: LayoutNode | null): Set<string> {
+  const out = new Set<string>();
+  if (!root) return out;
+  function walk(node: LayoutNode): void {
+    if (node.type === 'leaf') out.add(node.serviceId);
+    else node.children.forEach(walk);
+  }
+  walk(root);
+  return out;
+}
+
 /** Lightweight runtime guard so corrupt persisted layouts don't blow up the shell. */
 export function isLayoutNode(value: unknown): value is LayoutNode {
   if (!value || typeof value !== 'object') return false;
