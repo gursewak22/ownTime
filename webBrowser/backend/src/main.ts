@@ -15,7 +15,11 @@ async function bootstrap(): Promise<void> {
   );
 
   const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
-  app.enableCors({ origin: corsOrigin, credentials: true });
+  app.enableCors({
+    origin: corsOrigin,
+    credentials: true,
+    allowedHeaders: ['content-type', 'x-user-id'],
+  });
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);

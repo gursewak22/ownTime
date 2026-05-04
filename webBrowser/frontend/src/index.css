@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: 250 250 252;
+    --fg: 17 24 39;
+    --muted: 100 116 139;
+    --border: 226 232 240;
+    --accent: 79 70 229;
+    --accent-fg: 255 255 255;
+    --danger: 220 38 38;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
