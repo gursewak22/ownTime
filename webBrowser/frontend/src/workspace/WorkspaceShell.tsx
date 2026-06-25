@@ -1,9 +1,22 @@
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
 import { LayoutGrid, RotateCcw } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { UserSwitcher } from '@/components/shell/UserSwitcher';
-import { services } from '@/services/registry';
+import { getService, services } from '@/services/registry';
 import { AddPanelMenu } from './AddPanelMenu';
 import { Workspace } from './Workspace';
+import { WorkspaceDragProvider, type DragState } from './drag-context';
+import { computeEdge } from './drag-edge';
 import { useWorkspaceLayout } from './use-workspace-layout';
 
 export function WorkspaceShell() {
@@ -13,10 +26,62 @@ export function WorkspaceShell() {
     disabledServiceIds,
     addPanel,
     splitPanel,
+    movePanel,
     removePanel,
     resize,
     reset,
   } = useWorkspaceLayout();
+
+  const [drag, setDrag] = useState<DragState>({ activeId: null, hover: null });
+  const pointer = useRef({ x: 0, y: 0 });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  const trackPointer = useCallback((e: PointerEvent) => {
+    pointer.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const onDragStart = useCallback(
+    (e: DragStartEvent) => {
+      setDrag({ activeId: String(e.active.id), hover: null });
+      window.addEventListener('pointermove', trackPointer);
+    },
+    [trackPointer],
+  );
+
+  const onDragOver = useCallback((e: DragOverEvent) => {
+    const sourceId = String(e.active.id);
+    const over = e.over;
+    if (over && String(over.id) !== sourceId && over.rect) {
+      const edge = computeEdge(over.rect, pointer.current.x, pointer.current.y);
+      setDrag((d) => ({ ...d, hover: { nodeId: String(over.id), edge } }));
+    } else {
+      setDrag((d) => (d.hover ? { ...d, hover: null } : d));
+    }
+  }, []);
+
+  const endDrag = useCallback(() => {
+    setDrag({ activeId: null, hover: null });
+    window.removeEventListener('pointermove', trackPointer);
+  }, [trackPointer]);
+
+  const onDragEnd = useCallback(
+    (e: DragEndEvent) => {
+      const sourceId = String(e.active.id);
+      const over = e.over;
+      if (over && String(over.id) !== sourceId && over.rect) {
+        const edge = computeEdge(over.rect, pointer.current.x, pointer.current.y);
+        movePanel(sourceId, String(over.id), edge);
+      }
+      endDrag();
+    },
+    [movePanel, endDrag],
+  );
+
+  const activeServiceId = drag.activeId ? findServiceId(drag.activeId, layout) : '';
+  const activeService = activeServiceId ? getService(activeServiceId) : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -49,19 +114,51 @@ export function WorkspaceShell() {
         {isLoading ? (
           <CenteredHint>Loading workspace…</CenteredHint>
         ) : layout ? (
-          <Workspace
-            node={layout}
-            onRemove={removePanel}
-            onResize={resize}
-            onSplit={splitPanel}
-            disabledServiceIds={disabledServiceIds}
-          />
+          <DndContext
+            sensors={sensors}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDragEnd={onDragEnd}
+            onDragCancel={endDrag}
+          >
+            <WorkspaceDragProvider value={drag}>
+              <Workspace
+                node={layout}
+                onRemove={removePanel}
+                onResize={resize}
+                onSplit={splitPanel}
+                disabledServiceIds={disabledServiceIds}
+              />
+            </WorkspaceDragProvider>
+            <DragOverlay dropAnimation={null}>
+              {activeService ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-medium shadow-lg">
+                  <activeService.icon className="h-4 w-4 text-muted" />
+                  <span>{activeService.label}</span>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         ) : (
           <EmptyWorkspace onAdd={(id) => addPanel(id, 'horizontal')} />
         )}
       </div>
     </div>
   );
+}
+
+/** Walk the layout tree to find the serviceId for a leaf id (for the drag ghost). */
+function findServiceId(
+  nodeId: string,
+  node: ReturnType<typeof useWorkspaceLayout>['layout'],
+): string {
+  if (!node) return '';
+  if (node.type === 'leaf') return node.id === nodeId ? node.serviceId : '';
+  for (const child of node.children) {
+    const hit = findServiceId(nodeId, child);
+    if (hit) return hit;
+  }
+  return '';
 }
 
 function CenteredHint({ children }: { children: React.ReactNode }) {

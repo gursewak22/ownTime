@@ -203,3 +203,123 @@ export function isLayoutNode(value: unknown): value is LayoutNode {
   }
   return false;
 }
+
+/** Where a dragged panel is dropped relative to the target leaf. */
+export type DropEdge = 'left' | 'right' | 'top' | 'bottom' | 'center';
+
+/** Map a drop edge to the split direction + insert position used for re-parenting. */
+function edgeToPlacement(
+  edge: Exclude<DropEdge, 'center'>,
+): { direction: 'horizontal' | 'vertical'; position: SplitPosition } {
+  switch (edge) {
+    case 'left':
+      return { direction: 'horizontal', position: 'before' };
+    case 'right':
+      return { direction: 'horizontal', position: 'after' };
+    case 'top':
+      return { direction: 'vertical', position: 'before' };
+    case 'bottom':
+      return { direction: 'vertical', position: 'after' };
+  }
+}
+
+/** Find a node by id anywhere in the tree (returns the reference, not a copy). */
+function findNode(root: LayoutNode, id: string): LayoutNode | null {
+  if (root.id === id) return root;
+  if (root.type === 'leaf') return null;
+  for (const c of root.children) {
+    const hit = findNode(c, id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** True if `node` is `targetId` or contains it. Used to reject moving a node into its own subtree. */
+function containsId(node: LayoutNode, targetId: string): boolean {
+  if (node.id === targetId) return true;
+  if (node.type === 'leaf') return false;
+  return node.children.some((c) => containsId(c, targetId));
+}
+
+/**
+ * Swap the positions of two existing nodes (by id) in place. Sizes are preserved
+ * because no split changes cardinality. No-op if ids are equal/missing or one node
+ * contains the other.
+ */
+export function swapNodes(root: LayoutNode, aId: string, bId: string): LayoutNode {
+  if (aId === bId) return root;
+  const a = findNode(root, aId);
+  const b = findNode(root, bId);
+  if (!a || !b) return root;
+  if (containsId(a, bId) || containsId(b, aId)) return root;
+
+  function rebuild(node: LayoutNode): LayoutNode {
+    if (node.id === aId) return b as LayoutNode;
+    if (node.id === bId) return a as LayoutNode;
+    if (node.type === 'leaf') return node;
+    return { ...node, children: node.children.map(rebuild) };
+  }
+  return rebuild(root);
+}
+
+/**
+ * Move an existing node (`sourceId`) so it becomes a sibling of `targetId` on the
+ * given edge. `center` swaps the two nodes instead of re-parenting. The moved node
+ * is reused (never cloned), so singletons stay singleton. Returns the root unchanged
+ * for no-op or invalid moves (same node, missing id, or target inside the source).
+ */
+export function moveNode(
+  root: LayoutNode,
+  sourceId: string,
+  targetId: string,
+  edge: DropEdge,
+): LayoutNode {
+  if (sourceId === targetId) return root;
+
+  const source = findNode(root, sourceId);
+  const target = findNode(root, targetId);
+  if (!source || !target) return root;
+  if (containsId(source, targetId)) return root; // can't move into own subtree
+
+  if (edge === 'center') return swapNodes(root, sourceId, targetId);
+
+  const { direction, position } = edgeToPlacement(edge);
+
+  // Detach the source first. removeNode collapses single-child splits up the tree
+  // and may return a new root. It can't be null here because the target also exists.
+  const detached = removeNode(root, sourceId);
+  if (!detached) return root;
+
+  const moving = source; // reuse exact subtree (preserves id + nested structure)
+  const pair = (t: LayoutNode): LayoutNode[] =>
+    position === 'before' ? [moving, t] : [t, moving];
+
+  function insert(node: LayoutNode): LayoutNode {
+    if (node.id === targetId) {
+      return { type: 'split', id: uuid(), direction, children: pair(node), sizes: [50, 50] };
+    }
+    if (node.type === 'leaf') return node;
+
+    const idx = node.children.findIndex((c) => c.id === targetId);
+    if (idx !== -1) {
+      if (node.direction === direction) {
+        const next = [...node.children];
+        next.splice(position === 'before' ? idx : idx + 1, 0, moving);
+        return { ...node, children: next, sizes: equalSizes(next.length) };
+      }
+      const wrapped: SplitNode = {
+        type: 'split',
+        id: uuid(),
+        direction,
+        children: pair(node.children[idx]),
+        sizes: [50, 50],
+      };
+      const next = [...node.children];
+      next[idx] = wrapped;
+      return { ...node, children: next };
+    }
+    return { ...node, children: node.children.map(insert) };
+  }
+
+  return insert(detached);
+}

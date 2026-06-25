@@ -48,7 +48,12 @@ export function Workspace({ node, onRemove, onResize, onSplit, disabledServiceId
               )}
             />
           )}
-          <Panel defaultSize={node.sizes[i] ?? 100 / node.children.length} minSize={10}>
+          <Panel
+            id={child.id}
+            order={i}
+            defaultSize={node.sizes[i] ?? 100 / node.children.length}
+            minSize={10}
+          >
             <Workspace
               node={child}
               onRemove={onRemove}
