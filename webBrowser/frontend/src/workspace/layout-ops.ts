@@ -38,25 +38,32 @@ export function appendPanel(
   };
 }
 
+/** Where the new panel is placed relative to the target: before = left/up, after = right/down. */
+export type SplitPosition = 'before' | 'after';
+
 /**
  * Split a specific leaf (or split) in place. If the parent split is already in the same
  * direction, the new leaf is inserted as a direct sibling next to the target. Otherwise,
- * the target is wrapped in a new sub-split.
+ * the target is wrapped in a new sub-split. `position` controls which side the new panel
+ * lands on.
  */
 export function splitAt(
   root: LayoutNode,
   targetId: string,
   serviceId: string,
   direction: 'horizontal' | 'vertical',
+  position: SplitPosition = 'after',
 ): LayoutNode {
   const newLeaf = makeLeaf(serviceId);
+  const pair = (target: LayoutNode): LayoutNode[] =>
+    position === 'before' ? [newLeaf, target] : [target, newLeaf];
 
   if (root.id === targetId) {
     return {
       type: 'split',
       id: uuid(),
       direction,
-      children: [root, newLeaf],
+      children: pair(root),
       sizes: [50, 50],
     };
   }
@@ -67,14 +74,14 @@ export function splitAt(
   if (childIndex !== -1) {
     if (root.direction === direction) {
       const next = [...root.children];
-      next.splice(childIndex + 1, 0, newLeaf);
+      next.splice(position === 'before' ? childIndex : childIndex + 1, 0, newLeaf);
       return { ...root, children: next, sizes: equalSizes(next.length) };
     }
     const wrapped: SplitNode = {
       type: 'split',
       id: uuid(),
       direction,
-      children: [root.children[childIndex], newLeaf],
+      children: pair(root.children[childIndex]),
       sizes: [50, 50],
     };
     const next = [...root.children];
@@ -84,7 +91,7 @@ export function splitAt(
 
   return {
     ...root,
-    children: root.children.map((c) => splitAt(c, targetId, serviceId, direction)),
+    children: root.children.map((c) => splitAt(c, targetId, serviceId, direction, position)),
   };
 }
 

@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/cn';
 import { PanelFrame } from './PanelFrame';
+import type { SplitPosition } from './layout-ops';
 import type { LayoutNode } from './types';
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
     targetId: string,
     serviceId: string,
     direction: 'horizontal' | 'vertical',
+    position: SplitPosition,
   ) => void;
   disabledServiceIds: ReadonlySet<string>;
 };
@@ -23,7 +25,9 @@ export function Workspace({ node, onRemove, onResize, onSplit, disabledServiceId
         serviceId={node.serviceId}
         instanceId={node.id}
         onClose={() => onRemove(node.id)}
-        onSplit={(serviceId, direction) => onSplit(node.id, serviceId, direction)}
+        onSplit={(serviceId, direction, position) =>
+          onSplit(node.id, serviceId, direction, position)
+        }
         disabledServiceIds={disabledServiceIds}
       />
     );

@@ -12,6 +12,7 @@ import {
   splitAt,
   updateSizes,
 } from './layout-ops';
+import type { SplitPosition } from './layout-ops';
 import type { LayoutNode } from './types';
 
 const PERSIST_DEBOUNCE_MS = 400;
@@ -26,6 +27,7 @@ type WorkspaceLayout = {
     targetId: string,
     serviceId: string,
     direction: 'horizontal' | 'vertical',
+    position: SplitPosition,
   ) => void;
   removePanel: (nodeId: string) => void;
   resize: (splitId: string, sizes: number[]) => void;
@@ -72,8 +74,15 @@ export function useWorkspaceLayout(): WorkspaceLayout {
   );
 
   const splitPanel = useCallback(
-    (targetId: string, serviceId: string, direction: 'horizontal' | 'vertical') => {
-      setLayout((current) => (current ? splitAt(current, targetId, serviceId, direction) : current));
+    (
+      targetId: string,
+      serviceId: string,
+      direction: 'horizontal' | 'vertical',
+      position: SplitPosition,
+    ) => {
+      setLayout((current) =>
+        current ? splitAt(current, targetId, serviceId, direction, position) : current,
+      );
     },
     [],
   );
