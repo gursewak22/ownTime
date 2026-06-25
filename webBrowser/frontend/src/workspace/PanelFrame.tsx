@@ -2,12 +2,17 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { getService } from '@/services/registry';
 import { SplitMenu } from './SplitMenu';
+import type { SplitPosition } from './layout-ops';
 
 type Props = {
   serviceId: string;
   instanceId: string;
   onClose: () => void;
-  onSplit: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
+  onSplit: (
+    serviceId: string,
+    direction: 'horizontal' | 'vertical',
+    position: SplitPosition,
+  ) => void;
   disabledServiceIds: ReadonlySet<string>;
 };
 

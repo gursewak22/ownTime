@@ -1,12 +1,29 @@
-import { ArrowDown, ArrowRight, Plus } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { services } from '@/services/registry';
+import type { SplitPosition } from './layout-ops';
 
 type Props = {
-  onSplit: (serviceId: string, direction: 'horizontal' | 'vertical') => void;
+  onSplit: (
+    serviceId: string,
+    direction: 'horizontal' | 'vertical',
+    position: SplitPosition,
+  ) => void;
   disabledServiceIds: ReadonlySet<string>;
 };
+
+const SPLIT_ACTIONS: {
+  icon: typeof ArrowRight;
+  direction: 'horizontal' | 'vertical';
+  position: SplitPosition;
+  label: string;
+}[] = [
+  { icon: ArrowLeft, direction: 'horizontal', position: 'before', label: 'to the left' },
+  { icon: ArrowUp, direction: 'vertical', position: 'before', label: 'above' },
+  { icon: ArrowDown, direction: 'vertical', position: 'after', label: 'below' },
+  { icon: ArrowRight, direction: 'horizontal', position: 'after', label: 'to the right' },
+];
 
 export function SplitMenu({ onSplit, disabledServiceIds }: Props) {
   const [open, setOpen] = useState(false);
@@ -71,36 +88,24 @@ export function SplitMenu({ onSplit, disabledServiceIds }: Props) {
                     )}
                   </span>
                   <span className="flex shrink-0 gap-1">
-                    <button
-                      role="menuitem"
-                      type="button"
-                      title="Add to the right"
-                      aria-label={`Add ${s.label} to the right`}
-                      disabled={disabled}
-                      className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-muted/10 hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted"
-                      onClick={() => {
-                        if (disabled) return;
-                        onSplit(s.id, 'horizontal');
-                        setOpen(false);
-                      }}
-                    >
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                    <button
-                      role="menuitem"
-                      type="button"
-                      title="Add below"
-                      aria-label={`Add ${s.label} below`}
-                      disabled={disabled}
-                      className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-muted/10 hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted"
-                      onClick={() => {
-                        if (disabled) return;
-                        onSplit(s.id, 'vertical');
-                        setOpen(false);
-                      }}
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </button>
+                    {SPLIT_ACTIONS.map(({ icon: Icon, direction, position, label }) => (
+                      <button
+                        key={label}
+                        role="menuitem"
+                        type="button"
+                        title={`Add ${label}`}
+                        aria-label={`Add ${s.label} ${label}`}
+                        disabled={disabled}
+                        className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-muted/10 hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted"
+                        onClick={() => {
+                          if (disabled) return;
+                          onSplit(s.id, direction, position);
+                          setOpen(false);
+                        }}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </button>
+                    ))}
                   </span>
                 </li>
               );
