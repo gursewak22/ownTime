@@ -15,7 +15,7 @@ ownTime is a productivity tool intended to keep the user on a single task instea
 | `mobile/` | empty | Mobile client, stack not yet chosen. |
 | `docs/adr/` | active | Architecture Decision Records. **Read 0001 before changing the backend; 0002+0003 before changing the frontend.** |
 
-Treat the three top-level areas as separate sub-projects with their own toolchains.
+Treat the top-level areas as separate sub-projects with their own toolchains.
 
 ## Backend (`webBrowser/backend/`)
 
