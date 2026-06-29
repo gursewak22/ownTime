@@ -2,7 +2,6 @@ import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { clockModule } from './clock';
 import { todoModule } from './todo';
-import { webModule } from './web';
 
 export type PanelComponentProps = {
   /** Stable id for this panel instance (the workspace LeafNode.id). Use it to scope panel-local preferences. */
@@ -18,7 +17,7 @@ export type ServiceModule = {
   singleton?: boolean;
 };
 
-export const services: ServiceModule[] = [todoModule, clockModule, webModule];
+export const services: ServiceModule[] = [todoModule, clockModule];
 
 export function getService(id: string): ServiceModule | undefined {
   return services.find((s) => s.id === id);

@@ -12,9 +12,8 @@ ownTime is a productivity tool intended to keep the user on a single task instea
 |------|--------|-------|
 | `webBrowser/backend/` | **active** | NestJS + Prisma + Postgres. |
 | `webBrowser/frontend/` | **active** | Vite + React + TS workspace shell with resizable panels. |
-| `desktop/` | **active** | Electron shell that loads the frontend; gives the Web service a real `<webview>`. See ADR 0004. |
 | `mobile/` | empty | Mobile client, stack not yet chosen. |
-| `docs/adr/` | active | Architecture Decision Records. **Read 0001 before changing the backend; 0002+0003 before changing the frontend; 0004 before changing the desktop shell.** |
+| `docs/adr/` | active | Architecture Decision Records. **Read 0001 before changing the backend; 0002+0003 before changing the frontend.** |
 
 Treat the top-level areas as separate sub-projects with their own toolchains.
 
