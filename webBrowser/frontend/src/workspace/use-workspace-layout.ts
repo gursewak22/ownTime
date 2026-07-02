@@ -7,12 +7,13 @@ import {
   defaultLayout,
   enforceSingletons,
   isLayoutNode,
+  moveNode,
   pruneUnknownServices,
   removeNode,
   splitAt,
   updateSizes,
 } from './layout-ops';
-import type { SplitPosition } from './layout-ops';
+import type { DropEdge, SplitPosition } from './layout-ops';
 import type { LayoutNode } from './types';
 
 const PERSIST_DEBOUNCE_MS = 400;
@@ -30,6 +31,7 @@ type WorkspaceLayout = {
     position: SplitPosition,
   ) => void;
   removePanel: (nodeId: string) => void;
+  movePanel: (sourceId: string, targetId: string, edge: DropEdge) => void;
   resize: (splitId: string, sizes: number[]) => void;
   reset: () => void;
 };
@@ -91,6 +93,10 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     setLayout((current) => (current ? removeNode(current, nodeId) : null));
   }, []);
 
+  const movePanel = useCallback((sourceId: string, targetId: string, edge: DropEdge) => {
+    setLayout((current) => (current ? moveNode(current, sourceId, targetId, edge) : current));
+  }, []);
+
   const resize = useCallback((splitId: string, sizes: number[]) => {
     setLayout((current) => (current ? updateSizes(current, splitId, sizes) : current));
   }, []);
@@ -113,6 +119,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     addPanel,
     splitPanel,
     removePanel,
+    movePanel,
     resize,
     reset,
   };

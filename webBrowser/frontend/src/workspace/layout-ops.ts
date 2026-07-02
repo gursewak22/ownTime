@@ -54,9 +54,19 @@ export function splitAt(
   direction: 'horizontal' | 'vertical',
   position: SplitPosition = 'after',
 ): LayoutNode {
-  const newLeaf = makeLeaf(serviceId);
+  return insertNodeAt(root, targetId, makeLeaf(serviceId), direction, position);
+}
+
+/** Insert an existing subtree next to `targetId` (same placement rules as splitAt). */
+function insertNodeAt(
+  root: LayoutNode,
+  targetId: string,
+  node: LayoutNode,
+  direction: 'horizontal' | 'vertical',
+  position: SplitPosition,
+): LayoutNode {
   const pair = (target: LayoutNode): LayoutNode[] =>
-    position === 'before' ? [newLeaf, target] : [target, newLeaf];
+    position === 'before' ? [node, target] : [target, node];
 
   if (root.id === targetId) {
     return {
@@ -74,7 +84,7 @@ export function splitAt(
   if (childIndex !== -1) {
     if (root.direction === direction) {
       const next = [...root.children];
-      next.splice(position === 'before' ? childIndex : childIndex + 1, 0, newLeaf);
+      next.splice(position === 'before' ? childIndex : childIndex + 1, 0, node);
       return { ...root, children: next, sizes: equalSizes(next.length) };
     }
     const wrapped: SplitNode = {
@@ -91,7 +101,7 @@ export function splitAt(
 
   return {
     ...root,
-    children: root.children.map((c) => splitAt(c, targetId, serviceId, direction, position)),
+    children: root.children.map((c) => insertNodeAt(c, targetId, node, direction, position)),
   };
 }
 
@@ -114,6 +124,83 @@ export function removeNode(root: LayoutNode, targetId: string): LayoutNode | nul
     children: kept,
     sizes: equalSizes(kept.length),
   };
+}
+
+/** Where a dragged panel is dropped relative to the target panel. */
+export type DropEdge = 'left' | 'right' | 'top' | 'bottom' | 'center';
+
+function edgeToPlacement(edge: Exclude<DropEdge, 'center'>): {
+  direction: 'horizontal' | 'vertical';
+  position: SplitPosition;
+} {
+  switch (edge) {
+    case 'left':
+      return { direction: 'horizontal', position: 'before' };
+    case 'right':
+      return { direction: 'horizontal', position: 'after' };
+    case 'top':
+      return { direction: 'vertical', position: 'before' };
+    case 'bottom':
+      return { direction: 'vertical', position: 'after' };
+  }
+}
+
+function findNode(root: LayoutNode, id: string): LayoutNode | null {
+  if (root.id === id) return root;
+  if (root.type === 'leaf') return null;
+  for (const child of root.children) {
+    const found = findNode(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function containsId(node: LayoutNode, id: string): boolean {
+  return findNode(node, id) !== null;
+}
+
+/**
+ * Swap two subtrees in place. Sizes are untouched — no split changes cardinality.
+ * No-op if either id is missing, they're equal, or one contains the other.
+ */
+export function swapNodes(root: LayoutNode, aId: string, bId: string): LayoutNode {
+  if (aId === bId) return root;
+  const a = findNode(root, aId);
+  const b = findNode(root, bId);
+  if (!a || !b || containsId(a, bId) || containsId(b, aId)) return root;
+
+  function substitute(node: LayoutNode): LayoutNode {
+    if (node.id === aId) return b as LayoutNode;
+    if (node.id === bId) return a as LayoutNode;
+    if (node.type === 'leaf') return node;
+    return { ...node, children: node.children.map(substitute) };
+  }
+  return substitute(root);
+}
+
+/**
+ * Move the subtree `sourceId` next to `targetId`. Edge drops detach the source
+ * and re-insert it as a split sibling of the target; a center drop swaps the two.
+ * The source subtree is reused as-is (never cloned), so singleton services stay
+ * singleton. No-op on invalid moves (missing ids, self-drop, target inside source).
+ */
+export function moveNode(
+  root: LayoutNode,
+  sourceId: string,
+  targetId: string,
+  edge: DropEdge,
+): LayoutNode {
+  if (sourceId === targetId) return root;
+  const source = findNode(root, sourceId);
+  if (!source || !findNode(root, targetId) || containsId(source, targetId)) return root;
+
+  if (edge === 'center') return swapNodes(root, sourceId, targetId);
+
+  const detached = removeNode(root, sourceId);
+  if (!detached) return root;
+
+  const { direction, position } = edgeToPlacement(edge);
+  return insertNodeAt(detached, targetId, source, direction, position);
 }
 
 /** Update sizes on a split node by id. */
