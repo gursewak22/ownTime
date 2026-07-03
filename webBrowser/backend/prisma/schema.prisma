@@ -12,6 +12,7 @@ model User {
   createdAt   DateTime     @default(now())
   todos       Todo[]
   preferences Preference[]
+  scribeNotes ScribeNote[]
 }
 
 model Preference {
@@ -24,6 +25,19 @@ model Preference {
 
   @@unique([userId, service, key])
   @@index([userId, service])
+}
+
+model ScribeNote {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  doc       Json // TipTap rich-text document (JSON)
+  strokes   Json // doodle overlay: [{id, color, size, points: [x,y][]}]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
 }
 
 model Todo {
