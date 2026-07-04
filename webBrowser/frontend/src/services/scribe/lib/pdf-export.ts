@@ -47,26 +47,28 @@ export async function exportAnnotatedPdf(
 
 /**
  * PDF export for a plain text note: the rendered note (the editor's content
- * box) is rasterized with html2canvas and sliced into US-Letter pages, then
- * the strokes and comments are laid over it with the same shared geometry —
- * so the export looks exactly like the note on screen, doodles included.
+ * box) is rasterized and sliced into US-Letter pages, then the strokes and
+ * comments are laid over it with the same shared geometry — so the export
+ * looks exactly like the note on screen, doodles included. Rasterization goes
+ * through html-to-image (SVG foreignObject → the browser's own renderer);
+ * html2canvas re-implements layout and drew text ~9px below its on-screen
+ * position, so overlaid strokes missed the text they were drawn on.
  */
 export async function exportNotePdf(
   content: HTMLElement,
   strokes: Stroke[],
   comments: ScribeComment[] = [],
 ): Promise<Blob> {
-  const { default: html2canvas } = await import('html2canvas');
+  const { toCanvas } = await import('html-to-image');
   const contentWidth = Math.max(1, content.offsetWidth);
-  const canvas = await html2canvas(content, {
-    scale: 2,
+  const canvas = await toCanvas(content, {
+    pixelRatio: 2,
     backgroundColor: '#ffffff',
-    logging: false,
     // The doodle overlay and pins are drawn as vectors / annotations below —
     // don't bake them into the raster.
-    ignoreElements: (el) => {
-      const t = el.getAttribute('data-testid');
-      return t === 'doodle-overlay' || t === 'comment-pin' || t === 'comment-pin-draft';
+    filter: (el) => {
+      const t = el instanceof Element ? el.getAttribute('data-testid') : null;
+      return t !== 'doodle-overlay' && t !== 'comment-pin' && t !== 'comment-pin-draft';
     },
   });
 
