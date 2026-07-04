@@ -7,11 +7,6 @@ export function formatHms(date: Date): string {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
-/** "HH:MM" 24-hour — used by alarms. */
-export function formatHm(date: Date): string {
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
-}
-
 /** "Weekday, Mon DD" */
 export function formatLongDate(date: Date): string {
   return date.toLocaleDateString(undefined, {

@@ -1,13 +1,12 @@
-import { AlarmClock, Bell, Clock, Hourglass } from 'lucide-react';
+import { AlarmClock, Clock, Hourglass } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { cn } from '@/lib/cn';
 import { usePreference } from '@/preferences/use-preference';
-import { AlarmMode } from './modes/AlarmMode';
 import { ClockMode } from './modes/ClockMode';
 import { StopwatchMode } from './modes/StopwatchMode';
 import { TimerMode } from './modes/TimerMode';
 
-type Mode = 'clock' | 'stopwatch' | 'timer' | 'alarm';
+type Mode = 'clock' | 'stopwatch' | 'timer';
 
 type Tab = {
   id: Mode;
@@ -20,7 +19,6 @@ const TABS: Tab[] = [
   { id: 'clock', label: 'Clock', icon: Clock, Component: ClockMode },
   { id: 'stopwatch', label: 'Stopwatch', icon: AlarmClock, Component: StopwatchMode },
   { id: 'timer', label: 'Timer', icon: Hourglass, Component: TimerMode },
-  { id: 'alarm', label: 'Alarm', icon: Bell, Component: AlarmMode },
 ];
 
 const MODE_VALUES = TABS.map((t) => t.id);
@@ -30,7 +28,6 @@ type Props = { instanceId: string };
 export function ClockPanel({ instanceId }: Props) {
   const pref = usePreference<Mode>('clock', `mode:${instanceId}`, 'clock');
   const active: Mode = MODE_VALUES.includes(pref.value as Mode) ? (pref.value as Mode) : 'clock';
-  const ActiveComponent = TABS.find((t) => t.id === active)?.Component ?? ClockMode;
 
   return (
     <div className="flex h-full flex-col">
@@ -61,8 +58,18 @@ export function ClockPanel({ instanceId }: Props) {
           );
         })}
       </nav>
-      <div className="min-h-0 flex-1">
-        <ActiveComponent />
+      <div className="min-h-0 flex-1 overflow-auto">
+        {TABS.map((t) => {
+          const Component = t.Component;
+          const isActive = t.id === active;
+          // All modes stay mounted so their state (e.g. a running stopwatch or
+          // timer) survives tab switches; inactive ones are just hidden.
+          return (
+            <div key={t.id} className={cn('h-full', !isActive && 'hidden')}>
+              <Component />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
