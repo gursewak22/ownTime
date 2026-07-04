@@ -29,7 +29,7 @@ export function StopwatchMode() {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 p-4">
+    <div className="flex min-h-full flex-col items-center justify-center gap-6 p-4">
       <div className="font-mono text-6xl font-semibold tabular-nums">{formatDuration(elapsed)}</div>
       <div className="flex items-center gap-2">
         {state.running ? (

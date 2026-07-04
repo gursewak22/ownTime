@@ -62,7 +62,7 @@ export function TimerMode() {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 p-4">
+    <div className="flex min-h-full flex-col items-center justify-center gap-6 p-4">
       <div className="font-mono text-6xl font-semibold tabular-nums">{formatDuration(remaining)}</div>
 
       {!state.running && remaining === 0 && (
