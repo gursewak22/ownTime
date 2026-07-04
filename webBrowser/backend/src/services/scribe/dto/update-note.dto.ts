@@ -23,4 +23,9 @@ export class UpdateNoteDto {
   @IsOptional()
   @IsArray()
   strokes?: Prisma.InputJsonValue;
+
+  /** Point-anchored comments array. */
+  @IsOptional()
+  @IsArray()
+  comments?: Prisma.InputJsonValue;
 }

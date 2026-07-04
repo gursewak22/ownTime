@@ -30,13 +30,15 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
     }
   }
 
+  // FormData bodies (file uploads) set their own multipart content-type.
+  const isForm = body instanceof FormData;
   const res = await fetch(url, {
     method,
     headers: {
-      'content-type': 'application/json',
+      ...(isForm ? {} : { 'content-type': 'application/json' }),
       'x-user-id': getCurrentUserId(),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: isForm ? body : body !== undefined ? JSON.stringify(body) : undefined,
     signal,
   });
 
@@ -51,6 +53,21 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
   }
 
   return parsed as T;
+}
+
+/** GET a binary response (e.g. a stored PDF) with the same auth seam. */
+export async function apiBinary(path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const url = new URL(path.replace(/^\//, ''), `${API_URL}/`);
+  const res = await fetch(url, {
+    headers: { 'x-user-id': getCurrentUserId() },
+    signal,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const parsed = text ? safeJson(text) : undefined;
+    throw new ApiError(res.status, extractMessage(parsed) ?? res.statusText, parsed);
+  }
+  return res.arrayBuffer();
 }
 
 function safeJson(text: string): unknown {

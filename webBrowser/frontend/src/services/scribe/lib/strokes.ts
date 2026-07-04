@@ -70,7 +70,9 @@ function bbox(pts: Point[]) {
  * ellipse sampled (interior of shapes is NOT a hit — only the drawn border).
  */
 function outline(s: Stroke): Point[] {
-  if (!s.kind || s.kind === 'pen' || s.points.length < 2) return s.points;
+  if (!s.kind || s.kind === 'pen' || s.kind === 'highlight' || s.points.length < 2) {
+    return s.points;
+  }
   const [a, b] = endpoints(s.points);
   if (s.kind === 'line') return [a, b];
   const { x1, y1, x2, y2 } = bbox(s.points);

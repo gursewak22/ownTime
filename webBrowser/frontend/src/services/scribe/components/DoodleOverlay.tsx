@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn';
 import type { Stroke, StrokeKind } from '../api';
 import { hitTest, strokesInRect, strokeToPath } from '../lib/strokes';
 
-export type DoodleMode = 'type' | 'draw' | 'erase' | 'select';
+export type DoodleMode = 'type' | 'draw' | 'erase' | 'select' | 'comment';
 export type DrawTool = StrokeKind;
 
 type Props = {
@@ -16,12 +16,19 @@ type Props = {
   onCommitStroke: (stroke: Stroke) => void;
   onEraseStrokes: (ids: string[]) => void;
   onMoveStrokes: (ids: string[], dx: number, dy: number) => void;
+  onAddCommentAt: (point: [number, number]) => void;
 };
 
 const ERASE_RADIUS = 8;
 const SELECT_RADIUS = 6;
 const MIN_POINT_DISTANCE = 2;
 const MIN_SHAPE_DRAG = 3;
+const MAX_COMMENT_TAP_DRIFT = 6;
+/** Marker strokes are this much wider than the picked pen size. */
+export const HIGHLIGHT_WIDTH_FACTOR = 4;
+const HIGHLIGHT_OPACITY = 0.4;
+
+const isShapeTool = (t: DrawTool) => t === 'line' || t === 'circle' || t === 'rect';
 
 /**
  * The drawing layer over the note text. Pointer events give one code path for
@@ -46,6 +53,7 @@ export function DoodleOverlay({
   onCommitStroke,
   onEraseStrokes,
   onMoveStrokes,
+  onAddCommentAt,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [activeStroke, setActiveStroke] = useState<Stroke | null>(null);
@@ -58,6 +66,7 @@ export function DoodleOverlay({
   const erasing = useRef(false);
   const dragStart = useRef<[number, number] | null>(null);
   const marqueeAdditive = useRef(false);
+  const commentDown = useRef<[number, number] | null>(null);
 
   // Leaving select mode, or strokes disappearing (undo, other panel), drops
   // any selection that no longer applies.
@@ -116,13 +125,15 @@ export function DoodleOverlay({
       // still works from the events that bubble to this element.
     }
     const p = toPoint(e);
-    if (mode === 'draw') {
+    if (mode === 'comment') {
+      commentDown.current = p;
+    } else if (mode === 'draw') {
       setActiveStroke({
         id: uuid(),
         color,
-        size,
+        size: tool === 'highlight' ? size * HIGHLIGHT_WIDTH_FACTOR : size,
         ...(tool === 'pen' ? {} : { kind: tool }),
-        points: tool === 'pen' ? [p] : [p, p],
+        points: isShapeTool(tool) ? [p, p] : [p],
       });
     } else if (mode === 'erase') {
       erasing.current = true;
@@ -159,7 +170,9 @@ export function DoodleOverlay({
     if (mode === 'draw') {
       setActiveStroke((cur) => {
         if (!cur) return cur;
-        if (cur.kind) return { ...cur, points: [cur.points[0], shapeEnd(cur.points[0], p, e.shiftKey)] };
+        if (cur.kind && cur.kind !== 'highlight') {
+          return { ...cur, points: [cur.points[0], shapeEnd(cur.points[0], p, e.shiftKey)] };
+        }
         const last = cur.points[cur.points.length - 1];
         if (Math.hypot(p[0] - last[0], p[1] - last[1]) < MIN_POINT_DISTANCE) return cur;
         return { ...cur, points: [...cur.points, p] };
@@ -179,9 +192,19 @@ export function DoodleOverlay({
     if (e.pointerId !== activePointerId.current) return;
     activePointerId.current = null;
     erasing.current = false;
+    if (commentDown.current) {
+      const down = commentDown.current;
+      commentDown.current = null;
+      const p = toPoint(e);
+      // A tap places a comment; a drag (or a cancelled touch scroll) doesn't.
+      if (e.type === 'pointerup' && Math.hypot(p[0] - down[0], p[1] - down[1]) <= MAX_COMMENT_TAP_DRIFT) {
+        onAddCommentAt(down);
+      }
+    }
     if (activeStroke) {
+      const isShape = activeStroke.kind && activeStroke.kind !== 'highlight';
       const keep =
-        !activeStroke.kind ||
+        !isShape ||
         Math.hypot(
           activeStroke.points[1][0] - activeStroke.points[0][0],
           activeStroke.points[1][1] - activeStroke.points[0][1],
@@ -223,6 +246,8 @@ export function DoodleOverlay({
         mode === 'draw' && 'touch-none cursor-crosshair',
         mode === 'erase' && 'touch-none cursor-cell',
         mode === 'select' && (moving ? 'touch-none cursor-move' : 'touch-none cursor-default'),
+        // comment mode keeps touch scrolling — a tap places, a swipe scrolls
+        mode === 'comment' && 'cursor-copy',
       )}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -253,8 +278,9 @@ export function DoodleOverlay({
               d={strokeToPath(s)}
               stroke={s.color}
               strokeWidth={s.size}
+              strokeOpacity={s.kind === 'highlight' ? HIGHLIGHT_OPACITY : undefined}
               fill="none"
-              strokeLinecap="round"
+              strokeLinecap={s.kind === 'highlight' ? 'butt' : 'round'}
               strokeLinejoin="round"
             />
           </g>
