@@ -4,13 +4,19 @@ import {
   Bold,
   Circle,
   Code,
+  Download,
   Eraser,
+  FileText,
+  FileUp,
+  FileX2,
   Heading1,
   Heading2,
   Highlighter,
   Italic,
   List,
   ListOrdered,
+  Lock,
+  MessageSquarePlus,
   Minus,
   MousePointer2,
   Palette,
@@ -24,7 +30,7 @@ import {
   Type,
   Undo2,
 } from 'lucide-react';
-import type { ComponentType } from 'react';
+import { useRef, type ComponentType } from 'react';
 import { cn } from '@/lib/cn';
 import { ColorWheelPopover } from './ColorWheel';
 import type { DoodleMode, DrawTool } from './DoodleOverlay';
@@ -33,6 +39,7 @@ export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
 
 type Props = {
   editor: Editor | null;
+  readOnly: boolean;
   mode: DoodleMode;
   onModeChange: (mode: DoodleMode) => void;
   tool: DrawTool;
@@ -48,6 +55,13 @@ type Props = {
   onRedoStroke: () => void;
   onClearStrokes: () => void;
   saveStatus: SaveStatus;
+  hasPdf: boolean;
+  onAttachPdf: (file: File) => void;
+  uploadingPdf: boolean;
+  onExportPdf: () => void;
+  onExportMarkdown: () => void;
+  exportingPdf: boolean;
+  onRemovePdf: () => void;
 };
 
 export const PEN_COLORS = ['#1f2937', '#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7'];
@@ -70,10 +84,12 @@ const MODES: { id: DoodleMode; label: string; icon: ComponentType<{ className?: 
   { id: 'draw', label: 'Draw', icon: Pencil },
   { id: 'erase', label: 'Erase', icon: Eraser },
   { id: 'select', label: 'Select', icon: MousePointer2 },
+  { id: 'comment', label: 'Comment', icon: MessageSquarePlus },
 ];
 
 const TOOLS: { id: DrawTool; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { id: 'pen', label: 'Pen', icon: PenLine },
+  { id: 'highlight', label: 'Highlighter', icon: Highlighter },
   { id: 'line', label: 'Line', icon: Minus },
   { id: 'circle', label: 'Circle', icon: Circle },
   { id: 'rect', label: 'Square', icon: Square },
@@ -88,6 +104,7 @@ const SAVE_LABEL: Record<SaveStatus, string> = {
 
 export function EditorToolbar({
   editor,
+  readOnly,
   mode,
   onModeChange,
   tool,
@@ -103,11 +120,46 @@ export function EditorToolbar({
   onRedoStroke,
   onClearStrokes,
   saveStatus,
+  hasPdf,
+  onAttachPdf,
+  uploadingPdf,
+  onExportPdf,
+  onExportMarkdown,
+  exportingPdf,
+  onRemovePdf,
 }: Props) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textColor = editor ? ((editor.getAttributes('textStyle').color as string) ?? '') : '';
   const highlightColor = editor
     ? ((editor.getAttributes('highlight').color as string) ?? '')
     : '';
+  // A PDF note has no text layer, so the Type mode disappears with it.
+  const modes = hasPdf ? MODES.filter((m) => m.id !== 'type') : MODES;
+
+  if (readOnly) {
+    return (
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1.5">
+        <span className="flex items-center gap-1.5 text-[11px] text-muted">
+          <Lock className="h-3.5 w-3.5" />
+          Read-only — this note is open in another panel or tab
+        </span>
+        <Divider />
+        <FormatButton
+          icon={Download}
+          label={hasPdf ? 'Export annotated PDF' : 'Export as PDF'}
+          disabled={exportingPdf}
+          onClick={onExportPdf}
+        />
+        {!hasPdf && (
+          <FormatButton
+            icon={FileText}
+            label="Export as Markdown"
+            onClick={onExportMarkdown}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1.5">
@@ -287,8 +339,9 @@ export function EditorToolbar({
         </>
       )}
 
-      {/* Shape tool + pen options (draw mode only) */}
-      {mode === 'draw' && (
+      {/* Shape tool + pen options (draw + comment modes; picking one while
+          commenting hops back into draw mode so the choice is usable) */}
+      {(mode === 'draw' || mode === 'comment') && (
         <>
           <div className="flex overflow-hidden rounded-md border border-border" role="tablist" aria-label="Draw tool">
             {TOOLS.map((t) => {
@@ -302,7 +355,10 @@ export function EditorToolbar({
                   aria-selected={isActive}
                   aria-label={t.label}
                   title={t.label}
-                  onClick={() => onToolChange(t.id)}
+                  onClick={() => {
+                    onToolChange(t.id);
+                    if (mode === 'comment') onModeChange('draw');
+                  }}
                   className={cn(
                     'flex h-7 w-7 items-center justify-center',
                     isActive ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-muted/10',
@@ -320,7 +376,10 @@ export function EditorToolbar({
               type="button"
               aria-label={`Pen color ${c}`}
               title={`Pen color ${c}`}
-              onClick={() => onColorChange(c)}
+              onClick={() => {
+                onColorChange(c);
+                if (mode === 'comment') onModeChange('draw');
+              }}
               className={cn(
                 'h-5 w-5 rounded-full border-2 transition-transform',
                 color === c ? 'scale-110 border-accent' : 'border-transparent',
@@ -349,7 +408,10 @@ export function EditorToolbar({
               type="button"
               aria-label={`Pen size ${s}`}
               title={`Pen size ${s}px`}
-              onClick={() => onPenSizeChange(s)}
+              onClick={() => {
+                onPenSizeChange(s);
+                if (mode === 'comment') onModeChange('draw');
+              }}
               className={cn(
                 'flex h-7 w-7 items-center justify-center rounded',
                 penSize === s ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-muted/10',
@@ -365,7 +427,7 @@ export function EditorToolbar({
         </>
       )}
 
-      {/* Drawing history (all drawing modes) */}
+      {/* Drawing history */}
       {mode !== 'type' && (
         <>
           <FormatButton
@@ -392,7 +454,7 @@ export function EditorToolbar({
 
       {/* Type / Draw / Erase / Select mode toggle */}
       <div className="flex overflow-hidden rounded-md border border-border" role="tablist" aria-label="Scribe mode">
-        {MODES.map((m) => {
+        {modes.map((m) => {
           const Icon = m.icon;
           const isActive = mode === m.id;
           return (
@@ -415,13 +477,59 @@ export function EditorToolbar({
         })}
       </div>
 
+      {/* PDF attach / export / remove */}
+      <Divider />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        data-testid="pdf-file-input"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onAttachPdf(file);
+          e.target.value = '';
+        }}
+      />
+      {hasPdf ? (
+        <>
+          <FormatButton
+            icon={Download}
+            label="Export annotated PDF"
+            disabled={exportingPdf}
+            onClick={onExportPdf}
+          />
+          <FormatButton icon={FileX2} label="Remove PDF" onClick={onRemovePdf} />
+        </>
+      ) : (
+        <>
+          <FormatButton
+            icon={Download}
+            label="Export as PDF"
+            disabled={exportingPdf}
+            onClick={onExportPdf}
+          />
+          <FormatButton
+            icon={FileText}
+            label="Export as Markdown"
+            onClick={onExportMarkdown}
+          />
+          <FormatButton
+            icon={FileUp}
+            label="Attach PDF"
+            disabled={uploadingPdf}
+            onClick={() => fileInputRef.current?.click()}
+          />
+        </>
+      )}
+
       <span
         className={cn(
           'ml-auto pl-2 text-[11px]',
           saveStatus === 'error' ? 'text-danger' : 'text-muted',
         )}
       >
-        {SAVE_LABEL[saveStatus]}
+        {uploadingPdf ? 'Uploading PDF…' : SAVE_LABEL[saveStatus]}
       </span>
     </div>
   );

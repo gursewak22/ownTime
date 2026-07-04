@@ -33,6 +33,9 @@ model ScribeNote {
   title     String
   doc       Json // TipTap rich-text document (JSON)
   strokes   Json // doodle overlay: [{id, color, size, points: [x,y][]}]
+  comments  Json    @default("[]") // point-anchored comments: [{id, x, y, text, createdAt}]
+  pdf       Bytes? // optional PDF the note annotates (drawn over instead of text)
+  pdfName   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

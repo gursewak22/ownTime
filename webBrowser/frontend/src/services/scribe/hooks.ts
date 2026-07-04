@@ -15,6 +15,10 @@ function noteKey(userId: string, id: string | null) {
   return ['scribe-note', userId, id] as const;
 }
 
+function pdfKey(userId: string, id: string) {
+  return ['scribe-pdf', userId, id] as const;
+}
+
 export function useScribeNotes() {
   const userId = useUserStore((s) => s.currentUserId);
   return useQuery({
@@ -53,7 +57,12 @@ export function useCreateNote() {
       // against this list, and a fresh note must be selectable before the
       // background refetch lands.
       queryClient.setQueryData<ScribeNoteSummary[]>(listKey(userId), (cur) => {
-        const summary = { id: created.id, title: created.title, updatedAt: created.updatedAt };
+        const summary = {
+          id: created.id,
+          title: created.title,
+          pdfName: created.pdfName,
+          updatedAt: created.updatedAt,
+        };
         return cur ? [summary, ...cur] : [summary];
       });
       void queryClient.invalidateQueries({ queryKey: listKey(userId) });
@@ -95,6 +104,51 @@ export function useDeleteNote() {
       queryClient.removeQueries({ queryKey: noteKey(userId, id) });
       void queryClient.invalidateQueries({ queryKey: listKey(userId) });
     },
+  });
+}
+
+/** Raw bytes of the note's attached PDF, cached until the PDF changes. */
+export function useNotePdf(id: string, enabled: boolean) {
+  const userId = useUserStore((s) => s.currentUserId);
+  return useQuery({
+    queryKey: pdfKey(userId, id),
+    queryFn: () => scribeApi.getPdf(id),
+    enabled,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}
+
+function usePatchPdfName() {
+  const userId = useUserStore((s) => s.currentUserId);
+  const queryClient = useQueryClient();
+  return (id: string, summary: ScribeNoteSummary) => {
+    queryClient.setQueryData<ScribeNote>(noteKey(userId, id), (cur) =>
+      cur ? { ...cur, pdfName: summary.pdfName, updatedAt: summary.updatedAt } : cur,
+    );
+    queryClient.setQueryData<ScribeNoteSummary[]>(listKey(userId), (cur) =>
+      cur?.map((n) =>
+        n.id === id ? { ...n, pdfName: summary.pdfName, updatedAt: summary.updatedAt } : n,
+      ),
+    );
+    // Drop any cached bytes — a new upload must refetch, a removal must not linger.
+    queryClient.removeQueries({ queryKey: pdfKey(userId, id) });
+  };
+}
+
+export function useUploadPdf() {
+  const patch = usePatchPdfName();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => scribeApi.uploadPdf(id, file),
+    onSuccess: (summary, { id }) => patch(id, summary),
+  });
+}
+
+export function useRemovePdf() {
+  const patch = usePatchPdfName();
+  return useMutation({
+    mutationFn: (id: string) => scribeApi.removePdf(id),
+    onSuccess: (summary, id) => patch(id, summary),
   });
 }
 
