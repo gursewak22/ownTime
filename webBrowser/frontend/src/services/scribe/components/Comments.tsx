@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { PanelRightClose, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { ScribeComment } from '../api';
 
@@ -21,33 +21,87 @@ export function CommentPins({
   activeId,
   interactive,
   onSelect,
+  onMove,
 }: {
   comments: ScribeComment[]; // pre-ordered
   draft: CommentDraft | null;
   activeId: string | null;
   interactive: boolean;
   onSelect: (id: string) => void;
+  /** When set, pins can be dragged to a new spot (content-box coordinates). */
+  onMove?: (id: string, x: number, y: number) => void;
 }) {
+  // Drag state for the one pin being moved; committed via onMove on release.
+  const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
+  const start = useRef<{ cx: number; cy: number } | null>(null);
+  const moved = useRef(false);
+
   return (
     <>
-      {comments.map((c, i) => (
+      {comments.map((c, i) => {
+        const pos = drag?.id === c.id ? drag : c;
+        return (
         <button
           key={c.id}
           type="button"
           aria-label={`Comment ${i + 1}`}
-          title={c.text.slice(0, 80)}
+          title={onMove ? `${c.text.slice(0, 80)} (drag to move)` : c.text.slice(0, 80)}
           data-testid="comment-pin"
-          onClick={() => onSelect(c.id)}
+          onClick={() => {
+            // A drag ends with a click event — don't treat it as a select.
+            if (moved.current) {
+              moved.current = false;
+              return;
+            }
+            onSelect(c.id);
+          }}
+          onPointerDown={(e) => {
+            if (!onMove) return;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            start.current = { cx: e.clientX, cy: e.clientY };
+            moved.current = false;
+          }}
+          onPointerMove={(e) => {
+            if (!onMove || !start.current) return;
+            if (
+              !moved.current &&
+              Math.hypot(e.clientX - start.current.cx, e.clientY - start.current.cy) < 4
+            ) {
+              return; // still a click, not a drag
+            }
+            moved.current = true;
+            // The pin's offsetParent is the content box the coordinates live in.
+            const box = e.currentTarget.offsetParent;
+            if (!box) return;
+            const r = box.getBoundingClientRect();
+            setDrag({
+              id: c.id,
+              x: Math.round(Math.min(Math.max(e.clientX - r.left, 0), r.width)),
+              y: Math.round(Math.min(Math.max(e.clientY - r.top, 0), r.height)),
+            });
+          }}
+          onPointerUp={() => {
+            if (!onMove) return;
+            start.current = null;
+            if (drag?.id === c.id && moved.current) onMove(c.id, drag.x, drag.y);
+            setDrag(null);
+          }}
+          onPointerCancel={() => {
+            start.current = null;
+            setDrag(null);
+          }}
           className={cn(
             'absolute z-10 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[10px] font-bold text-white shadow',
             activeId === c.id ? 'bg-accent ring-2 ring-accent/40' : 'bg-accent/70',
             interactive ? 'pointer-events-auto' : 'pointer-events-none',
+            onMove && (drag?.id === c.id ? 'cursor-grabbing' : 'cursor-grab'),
           )}
-          style={{ left: c.x, top: c.y }}
+          style={{ left: pos.x, top: pos.y, touchAction: onMove ? 'none' : undefined }}
         >
           {i + 1}
         </button>
-      ))}
+        );
+      })}
       {draft && (
         <span
           data-testid="comment-pin-draft"
@@ -71,6 +125,7 @@ export function CommentSidebar({
   onCancelDraft,
   onChangeText,
   onDelete,
+  onHide,
 }: {
   comments: ScribeComment[]; // pre-ordered
   readOnly?: boolean;
@@ -81,6 +136,7 @@ export function CommentSidebar({
   onCancelDraft: () => void;
   onChangeText: (id: string, text: string) => void;
   onDelete: (id: string) => void;
+  onHide: () => void;
 }) {
   const [draftText, setDraftText] = useState('');
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
@@ -103,8 +159,17 @@ export function CommentSidebar({
       className="flex w-64 shrink-0 flex-col overflow-y-auto border-l border-border"
       data-testid="comment-sidebar"
     >
-      <div className="border-b border-border px-3 py-2 text-xs font-semibold text-muted">
+      <div className="flex items-center border-b border-border px-3 py-2 text-xs font-semibold text-muted">
         Comments
+        <button
+          type="button"
+          aria-label="Hide comments"
+          title="Hide comments"
+          onClick={onHide}
+          className="ml-auto rounded p-1 text-muted hover:bg-muted/10 hover:text-fg"
+        >
+          <PanelRightClose className="h-3.5 w-3.5" />
+        </button>
       </div>
       {comments.length === 0 && !draft && (
         <p className="px-3 py-4 text-xs text-muted">

@@ -115,7 +115,8 @@ function NoteEditorBody({
   const [mode, setMode] = useState<DoodleMode>(hasPdf ? 'draw' : 'type');
   const [tool, setTool] = useState<DrawTool>('pen');
   const [color, setColor] = useState(PEN_COLORS[1]);
-  const [penSize, setPenSize] = useState(PEN_SIZES[1]);
+  const [penSize, setPenSize] = useState(PEN_SIZES[2]);
+  const [showComments, setShowComments] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [gone, setGone] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -196,11 +197,19 @@ function NoteEditorBody({
 
   const selectComment = useCallback((id: string) => {
     setActiveCommentId(id);
+    setShowComments(true);
     const c = commentsRef.current.find((x) => x.id === id);
     if (c && scrollRef.current) {
       scrollRef.current.scrollTo({ top: Math.max(0, c.y - 120), behavior: 'smooth' });
     }
   }, []);
+
+  const moveComment = useCallback(
+    (id: string, x: number, y: number) => {
+      changeComments(commentsRef.current.map((c) => (c.id === id ? { ...c, x, y } : c)));
+    },
+    [changeComments],
+  );
 
   const saveCommentDraft = useCallback(
     (text: string) => {
@@ -394,6 +403,9 @@ function NoteEditorBody({
           if (window.confirm('Clear the whole drawing?')) changeStrokes(() => []);
         }}
         saveStatus={saveStatus}
+        commentCount={comments.length}
+        showComments={showComments}
+        onToggleComments={() => setShowComments((v) => !v)}
         hasPdf={hasPdf}
         onAttachPdf={handleAttachPdf}
         uploadingPdf={uploadPdf.isPending}
@@ -462,6 +474,7 @@ function NoteEditorBody({
             onAddCommentAt={([x, y]) => {
               setCommentDraft({ x, y });
               setActiveCommentId(null);
+              setShowComments(true);
             }}
           />
           <CommentPins
@@ -470,10 +483,11 @@ function NoteEditorBody({
             activeId={activeCommentId}
             interactive={readOnly || mode === 'comment' || mode === 'type'}
             onSelect={selectComment}
+            onMove={readOnly ? undefined : moveComment}
           />
         </div>
       </div>
-      {(mode === 'comment' || comments.length > 0 || commentDraft !== null) && (
+      {showComments && (mode === 'comment' || comments.length > 0 || commentDraft !== null) && (
         <CommentSidebar
           comments={orderComments(comments)}
           readOnly={readOnly}
@@ -489,6 +503,7 @@ function NoteEditorBody({
             changeComments(commentsRef.current.filter((c) => c.id !== id));
             if (activeCommentId === id) setActiveCommentId(null);
           }}
+          onHide={() => setShowComments(false)}
         />
       )}
       </div>
