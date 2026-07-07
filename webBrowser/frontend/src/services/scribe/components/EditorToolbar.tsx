@@ -20,6 +20,8 @@ import {
   Minus,
   MousePointer2,
   Palette,
+  PanelRightClose,
+  PanelRightOpen,
   Pencil,
   PenLine,
   Quote,
@@ -55,6 +57,9 @@ type Props = {
   onRedoStroke: () => void;
   onClearStrokes: () => void;
   saveStatus: SaveStatus;
+  commentCount: number;
+  showComments: boolean;
+  onToggleComments: () => void;
   hasPdf: boolean;
   onAttachPdf: (file: File) => void;
   uploadingPdf: boolean;
@@ -65,17 +70,26 @@ type Props = {
 };
 
 export const PEN_COLORS = ['#1f2937', '#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7'];
-export const PEN_SIZES = [2, 4, 8];
+export const PEN_SIZES = [1, 2, 4, 6, 8, 12, 16];
 
+// Web-safe stacks only — anything here must render without loading a font.
 const FONTS: { label: string; value: string }[] = [
   { label: 'Font', value: '' },
   { label: 'Sans', value: 'ui-sans-serif, system-ui, sans-serif' },
   { label: 'Serif', value: 'Georgia, ui-serif, serif' },
   { label: 'Mono', value: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
   { label: 'Handwriting', value: '"Comic Sans MS", "Comic Sans", cursive' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Trebuchet', value: '"Trebuchet MS", Tahoma, sans-serif' },
+  { label: 'Times', value: '"Times New Roman", Times, serif' },
+  { label: 'Palatino', value: '"Palatino Linotype", "Book Antiqua", Palatino, serif' },
+  { label: 'Impact', value: 'Impact, "Arial Black", sans-serif' },
 ];
 
-const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px'];
+const FONT_SIZES = [
+  '10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '40px', '48px',
+];
 
 const HIGHLIGHT_PRESETS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8'];
 
@@ -120,6 +134,9 @@ export function EditorToolbar({
   onRedoStroke,
   onClearStrokes,
   saveStatus,
+  commentCount,
+  showComments,
+  onToggleComments,
   hasPdf,
   onAttachPdf,
   uploadingPdf,
@@ -135,6 +152,15 @@ export function EditorToolbar({
     : '';
   // A PDF note has no text layer, so the Type mode disappears with it.
   const modes = hasPdf ? MODES.filter((m) => m.id !== 'type') : MODES;
+
+  const commentsToggle = (commentCount > 0 || mode === 'comment') && (
+    <FormatButton
+      icon={showComments ? PanelRightClose : PanelRightOpen}
+      label={showComments ? 'Hide comments' : `Show comments (${commentCount})`}
+      active={showComments}
+      onClick={onToggleComments}
+    />
+  );
 
   if (readOnly) {
     return (
@@ -157,6 +183,8 @@ export function EditorToolbar({
             onClick={onExportMarkdown}
           />
         )}
+        {commentsToggle && <Divider />}
+        {commentsToggle}
       </div>
     );
   }
@@ -522,6 +550,9 @@ export function EditorToolbar({
           />
         </>
       )}
+
+      {commentsToggle && <Divider />}
+      {commentsToggle}
 
       <span
         className={cn(
