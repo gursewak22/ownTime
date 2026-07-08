@@ -1,0 +1,272 @@
+openapi: 3.1.0
+info:
+  title: ownTime auth service
+  version: 0.1.0
+  description: |
+    Identity and user-profile service (ADR 0004/0005/0006).
+
+    Owns Google login, RS256 access-token issuance, refresh-token rotation
+    (HttpOnly cookie, `Path=/auth`), the published JWKS other services verify
+    against, and the generic per-user preferences store.
+
+    Route prefixes owned by this service (the UI service proxies them here):
+    `/auth`, `/preferences`.
+servers:
+  - url: http://auth:3000
+    description: internal deploy network (Docker DNS)
+  - url: http://localhost:3001
+    description: local development
+
+tags:
+  - name: auth
+  - name: preferences
+
+paths:
+  /auth/google:
+    post:
+      tags: [auth]
+      operationId: loginWithGoogle
+      summary: Exchange a Google ID token for an ownTime session
+      description: |
+        Verifies the Google ID token locally (cached Google certs), upserts the
+        user, and returns an access token. The rotating refresh token is set as
+        an HttpOnly `SameSite=Strict` cookie scoped to `Path=/auth` — it never
+        appears in the response body. Rate limited (20/min per IP).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  description: Google ID token from Google Identity Services
+      responses:
+        '201':
+          description: Session created; refresh cookie set.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: "`owntime_rt=<opaque>; HttpOnly; SameSite=Strict; Path=/auth`"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshSession
+      summary: Rotate the refresh token and mint a new access token
+      description: |
+        Reads the refresh token from the HttpOnly cookie (no request body).
+        Rotation has a 60s replay-grace window; reuse of a consumed token past
+        the window revokes the whole token family (theft response, ADR 0005).
+        Requests with an Origin header outside the allowlist are rejected (403).
+      security: []
+      responses:
+        '201':
+          description: New session; a successor refresh cookie is set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Cross-origin request rejected (CSRF Origin allowlist).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the whole refresh-token family and clear the cookie
+      security: []
+      responses:
+        '204':
+          description: Logged out (idempotent — also returned with no cookie).
+        '403':
+          description: Cross-origin request rejected (CSRF Origin allowlist).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/.well-known/jwks.json:
+    get:
+      tags: [auth]
+      operationId: getJwks
+      summary: Public signing keys (JWKS)
+      description: |
+        RS256 public keys for verifying access tokens this service issued.
+        Other services fetch and cache this over the internal network instead
+        of holding any shared secret; key rollover publishes both keys here.
+      security: []
+      responses:
+        '200':
+          description: JWK set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      description: RSA public JWK with kid, use=sig, alg=RS256
+
+  /preferences/{service}:
+    parameters:
+      - $ref: '#/components/parameters/service'
+    get:
+      tags: [preferences]
+      operationId: listPreferences
+      summary: All stored keys for one service namespace
+      responses:
+        '200':
+          description: Key → value map (empty object when nothing stored).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /preferences/{service}/{key}:
+    parameters:
+      - $ref: '#/components/parameters/service'
+      - $ref: '#/components/parameters/key'
+    get:
+      tags: [preferences]
+      operationId: getPreference
+      summary: One preference value
+      responses:
+        '200':
+          description: The stored value, or `null` when unset.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [value]
+                properties:
+                  value: {}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [preferences]
+      operationId: setPreference
+      summary: Create or replace one preference value
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties:
+                value:
+                  description: Any JSON value (string, number, object, array…).
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [preferences]
+      operationId: deletePreference
+      summary: Delete one preference (idempotent)
+      responses:
+        '200':
+          description: Deleted (or never existed).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        RS256 access token issued by this service (5 min TTL). `sub` is the
+        user id every service scopes its data by. In non-production dev runs
+        with AUTH_ALLOW_DEV_HEADER=true, an `x-user-id: <id>` header may be
+        sent instead.
+
+  parameters:
+    service:
+      name: service
+      in: path
+      required: true
+      schema: { type: string }
+      description: Service namespace ('shell', 'todo', 'clock', 'scribe', …).
+    key:
+      name: key
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    Session:
+      type: object
+      required: [accessToken, user]
+      properties:
+        accessToken:
+          type: string
+          description: 'RS256 JWT, ~5 minute TTL; send as `Authorization: Bearer`.'
+        user:
+          type: object
+          required: [id, email, name, picture]
+          properties:
+            id: { type: string }
+            email: { type: [string, 'null'] }
+            name: { type: [string, 'null'] }
+            picture: { type: [string, 'null'] }
+    Ok:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean, const: true }
+    Error:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid credentials.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Rate limited (@nestjs/throttler).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

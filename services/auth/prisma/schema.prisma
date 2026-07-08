@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  googleSub     String?        @unique // Google `sub` claim; null for dev-header users
+  email         String?
+  name          String?
+  picture       String?
+  createdAt     DateTime       @default(now())
+  preferences   Preference[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique // sha256 hex of the opaque token
+  familyId  String // lineage shared across every rotation of one login (ADR 0005)
+  userId    String
+  rotatedAt DateTime? // set when this token is consumed; reuse after grace ⇒ family breach
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+// Generic per-user preference store for every ownTime service (ADR 0001 §7,
+// kept with auth after the service split — ADR 0006 — because preferences are
+// user-profile data and this keeps the other services free of user state).
+model Preference {
+  id      String @id @default(cuid())
+  userId  String
+  service String
+  key     String
+  value   Json
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, service, key])
+  @@index([userId, service])
+}

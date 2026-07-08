@@ -1,0 +1,23 @@
+# Local-dev database for the tools service only. The full multi-service stack
+# (all services + databases on one network) lives in deploy/docker-compose.yml.
+services:
+  postgres:
+    image: postgres:16
+    container_name: owntime-tools-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: owntime
+      POSTGRES_PASSWORD: owntime
+      POSTGRES_DB: owntime_tools
+    ports:
+      - "5434:5432"
+    volumes:
+      - owntime_tools_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owntime -d owntime_tools"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  owntime_tools_pgdata:
