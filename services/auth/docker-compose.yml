@@ -1,0 +1,23 @@
+# Local-dev database for the auth service only. The full multi-service stack
+# (all services + databases on one network) lives in deploy/docker-compose.yml.
+services:
+  postgres:
+    image: postgres:16
+    container_name: owntime-auth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: owntime
+      POSTGRES_PASSWORD: owntime
+      POSTGRES_DB: owntime_auth
+    ports:
+      - "5433:5432"
+    volumes:
+      - owntime_auth_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owntime -d owntime_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  owntime_auth_pgdata:

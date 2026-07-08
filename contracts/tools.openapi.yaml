@@ -1,0 +1,346 @@
+openapi: 3.1.0
+info:
+  title: ownTime tools service
+  version: 0.1.0
+  description: |
+    The combined tools service (ADR 0006): todo, clock, stopwatch, and scribe.
+    Clock and stopwatch are client-side features — their per-user settings ride
+    the auth service's preferences API — so this service's HTTP surface is the
+    todo CRUD plus scribe notes.
+
+    Every route requires a Bearer access token issued by the auth service; this
+    service verifies it against the auth JWKS over the internal network and
+    scopes all data by the token's `sub`.
+
+    Route prefixes owned by this service (the UI service proxies them here):
+    `/todos`, `/scribe`.
+servers:
+  - url: http://tools:3000
+    description: internal deploy network (Docker DNS)
+  - url: http://localhost:3002
+    description: local development
+
+tags:
+  - name: todos
+  - name: scribe
+
+paths:
+  /todos:
+    get:
+      tags: [todos]
+      operationId: listTodos
+      summary: List the user's todos (open first, newest first)
+      parameters:
+        - name: done
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: Filter by completion state.
+      responses:
+        '200':
+          description: Todos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Todo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [todos]
+      operationId: createTodo
+      summary: Create a todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTodo' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Todo' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /todos/{id}:
+    parameters:
+      - $ref: '#/components/parameters/id'
+    get:
+      tags: [todos]
+      operationId: getTodo
+      summary: One todo
+      responses:
+        '200':
+          description: The todo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Todo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [todos]
+      operationId: updateTodo
+      summary: Partially update a todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTodo' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Todo' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [todos]
+      operationId: deleteTodo
+      summary: Delete a todo
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /scribe/notes:
+    get:
+      tags: [scribe]
+      operationId: listNotes
+      summary: List note summaries (most recently updated first)
+      description: Summaries only — doc/strokes/comments can be hundreds of KB.
+      responses:
+        '200':
+          description: Note summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NoteSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [scribe]
+      operationId: createNote
+      summary: Create a note (empty TipTap doc, no strokes/comments)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoteDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /scribe/notes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/id'
+    get:
+      tags: [scribe]
+      operationId: getNote
+      summary: Full note (doc + strokes + comments, minus raw PDF bytes)
+      responses:
+        '200':
+          description: The note.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoteDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [scribe]
+      operationId: updateNote
+      summary: Partially update title/doc/strokes/comments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateNote' }
+      responses:
+        '200':
+          description: Updated (summary shape).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoteSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [scribe]
+      operationId: deleteNote
+      summary: Delete a note
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /scribe/notes/{id}/pdf:
+    parameters:
+      - $ref: '#/components/parameters/id'
+    post:
+      tags: [scribe]
+      operationId: attachPdf
+      summary: Attach a PDF the note annotates (multipart, field name `file`)
+      description: 20 MB max; magic-byte checked (`%PDF-`), content type is not trusted.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Attached.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoteSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [scribe]
+      operationId: getPdf
+      summary: Download the attached PDF
+      responses:
+        '200':
+          description: The PDF (inline disposition, `Cache-Control no-store`).
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [scribe]
+      operationId: removePdf
+      summary: Detach the PDF
+      responses:
+        '200':
+          description: Detached.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoteSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token issued by the auth service; verified here against
+        `GET {auth}/auth/.well-known/jwks.json` (env AUTH_JWKS_URL). In
+        non-production dev runs with AUTH_ALLOW_DEV_HEADER=true, an
+        `x-user-id: <id>` header may be sent instead.
+
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: cuid of the resource (always scoped to the caller's userId).
+
+  schemas:
+    Todo:
+      type: object
+      required: [id, userId, title, notes, done, dueAt, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        title: { type: string }
+        notes: { type: [string, 'null'] }
+        done: { type: boolean }
+        dueAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateTodo:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 500 }
+        notes: { type: string, maxLength: 10000 }
+        dueAt: { type: string, format: date-time }
+    UpdateTodo:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 500 }
+        notes: { type: string, maxLength: 10000 }
+        done: { type: boolean }
+        dueAt: { type: [string, 'null'], format: date-time }
+    NoteSummary:
+      type: object
+      required: [id, title, pdfName, updatedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        pdfName: { type: [string, 'null'] }
+        updatedAt: { type: string, format: date-time }
+    NoteDetail:
+      allOf:
+        - $ref: '#/components/schemas/NoteSummary'
+        - type: object
+          required: [doc, strokes, comments, createdAt]
+          properties:
+            doc:
+              type: object
+              description: TipTap rich-text document JSON (stored verbatim).
+            strokes:
+              type: array
+              description: 'Doodle overlay: [{id, color, size, points: [x,y][]}].'
+            comments:
+              type: array
+              description: 'Point-anchored comments: [{id, x, y, text, createdAt}].'
+            createdAt: { type: string, format: date-time }
+    UpdateNote:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        doc: { type: object }
+        strokes: { type: array }
+        comments: { type: array }
+    Error:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid credentials.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource missing or owned by another user.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Body failed class-validator rules.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

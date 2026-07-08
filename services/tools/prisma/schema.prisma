@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// The tools service owns no User table: identity lives in the auth service and
+// arrives as the verified JWT `sub` claim (ADR 0006). userId is therefore a
+// plain scoping column — no FK to enforce across service databases.
+
+model Todo {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  notes     String?
+  done      Boolean   @default(false)
+  dueAt     DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, done])
+}
+
+model ScribeNote {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  doc       Json // TipTap rich-text document (JSON)
+  strokes   Json // doodle overlay: [{id, color, size, points: [x,y][]}]
+  comments  Json    @default("[]") // point-anchored comments: [{id, x, y, text, createdAt}]
+  pdf       Bytes? // optional PDF the note annotates (drawn over instead of text)
+  pdfName   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}

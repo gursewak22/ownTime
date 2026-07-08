@@ -1,0 +1,50 @@
+# UI service routing (ADR 0006). The browser only ever talks to this server;
+# API paths are proxied to the backend services over the internal deploy
+# network (Docker DNS names), which is never exposed to the internet.
+# ${AUTH_UPSTREAM} / ${TOOLS_UPSTREAM} are substituted by the nginx image's
+# envsubst entrypoint, so the same image works on any network layout.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Scribe PDF uploads: 20 MB service-side limit + multipart overhead.
+    client_max_body_size 25m;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    location /auth/ {
+        proxy_pass ${AUTH_UPSTREAM};
+        include /etc/nginx/proxy-common.conf;
+    }
+
+    location /preferences/ {
+        proxy_pass ${AUTH_UPSTREAM};
+        include /etc/nginx/proxy-common.conf;
+    }
+
+    location /todos {
+        proxy_pass ${TOOLS_UPSTREAM};
+        include /etc/nginx/proxy-common.conf;
+    }
+
+    location /scribe/ {
+        proxy_pass ${TOOLS_UPSTREAM};
+        include /etc/nginx/proxy-common.conf;
+    }
+
+    # Hashed build assets are immutable; cache hard.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # SPA fallback: every non-API path renders the workspace shell.
+    location / {
+        try_files $uri /index.html;
+    }
+}

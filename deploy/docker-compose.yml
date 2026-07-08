@@ -1,0 +1,115 @@
+# Full ownTime stack: three independently deployable services (ADR 0006), each
+# backend with its own Postgres. Only the UI publishes a port; every service→
+# service hop (nginx proxying, JWKS fetches) stays on the internal network.
+#
+# Quick start:
+#   cd deploy && cp .env.example .env   # fill in the two required values
+#   docker compose up -d --build
+#   open http://localhost:8080
+#
+# Swarm / overlay deployment: create the network once with
+#   docker network create --driver overlay --attachable owntime_net
+# then replace the `owntime_net` definition below with:
+#   networks:
+#     owntime_net:
+#       external: true
+
+name: owntime
+
+networks:
+  owntime_net:
+    driver: bridge
+
+volumes:
+  auth_pgdata:
+  tools_pgdata:
+
+services:
+  # --- auth service: identity, sessions/JWKS, preferences -------------------
+  auth-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: owntime
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-owntime}
+      POSTGRES_DB: owntime_auth
+    volumes:
+      - auth_pgdata:/var/lib/postgresql/data
+    networks: [owntime_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owntime -d owntime_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    build: ../services/auth
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://owntime:${AUTH_DB_PASSWORD:-owntime}@auth-db:5432/owntime_auth?schema=public
+      # The browser-facing origin of the UI service — CORS + CSRF allowlist.
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set in deploy/.env}
+      AUTH_JWT_PRIVATE_KEY: ${AUTH_JWT_PRIVATE_KEY:?set in deploy/.env (see .env.example)}
+      # true requires HTTPS in front of the UI; set false for TLS-less LAN use.
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+    depends_on:
+      auth-db: { condition: service_healthy }
+    networks: [owntime_net]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/auth/.well-known/jwks.json').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # --- tools service: todo + clock + stopwatch + scribe ----------------------
+  tools-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: owntime
+      POSTGRES_PASSWORD: ${TOOLS_DB_PASSWORD:-owntime}
+      POSTGRES_DB: owntime_tools
+    volumes:
+      - tools_pgdata:/var/lib/postgresql/data
+    networks: [owntime_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owntime -d owntime_tools"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  tools:
+    build: ../services/tools
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://owntime:${TOOLS_DB_PASSWORD:-owntime}@tools-db:5432/owntime_tools?schema=public
+      AUTH_JWKS_URL: http://auth:3000/auth/.well-known/jwks.json
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+    depends_on:
+      tools-db: { condition: service_healthy }
+      auth: { condition: service_started }
+    networks: [owntime_net]
+    healthcheck:
+      # 401 (guard alive, no creds) still proves the service is up.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/todos').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # --- UI service: static SPA + reverse proxy (the only published port) -----
+  ui:
+    build:
+      context: ../services/ui
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set in deploy/.env}
+    restart: unless-stopped
+    environment:
+      AUTH_UPSTREAM: http://auth:3000
+      TOOLS_UPSTREAM: http://tools:3000
+    ports:
+      - "${UI_PORT:-8080}:80"
+    depends_on: [auth, tools]
+    networks: [owntime_net]

@@ -9,7 +9,7 @@ Scribe notes now have a strict single-editor rule: when a note is open in one
 panel or browser tab, every other panel/tab shows it read-only, and editing
 hands over automatically when the owner closes. This is implemented entirely
 client-side with the Web Locks API
-(`webBrowser/frontend/src/services/scribe/lib/note-lock.ts`).
+(`services/ui/src/services/scribe/lib/note-lock.ts`).
 
 
 Web Locks are scoped to **one browser profile on one machine**. The rule is
