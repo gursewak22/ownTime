@@ -43,7 +43,7 @@ export class ChatService {
     const provider = await this.provider.settings(userId);
     if (!provider) {
       throw new BadRequestException(
-        'No model configured — add an API key or a local endpoint in the assistant settings.',
+        'No model configured — this server has no default local model, so add an API key or a local endpoint in the assistant settings.',
       );
     }
 

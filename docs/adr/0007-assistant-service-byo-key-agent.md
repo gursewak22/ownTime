@@ -70,3 +70,19 @@ work (per-tool confirmation, allowlists) rides that future PR.
 - Local dev ports: assistant on :3003, its Postgres on :5435.
 - If sprint 0002 (JWKS hardening, `iss`/`aud` pinning) lands, the assistant's
   guard must be updated together with the tools service's.
+
+## Addendum (2026-07-18): server-default local model via Ollama
+
+Decision #2's bring-your-own-key onboarding is now optional. The service reads
+an env-level default endpoint — `ASSISTANT_DEFAULT_BASE_URL` +
+`ASSISTANT_DEFAULT_MODEL`, both required to activate — used for any user with
+no stored provider config. Deploys point it at an Ollama instance on the
+docker host (Ollama speaks the Anthropic Messages API), so the assistant works
+with zero per-user setup and prompts never leave the machine. A user's own
+key/endpoint saved via `/assistant/provider` still overrides the default, and
+clearing both env values restores strict BYO-key behavior.
+
+`ProviderStatus` gained a `serverDefault` field (see
+`contracts/assistant.openapi.yaml`) so the UI can say which model is in use.
+The outbound-internet consequence above now applies only when a user brings a
+hosted API key.

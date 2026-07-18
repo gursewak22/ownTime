@@ -7,7 +7,7 @@ ownTime ships as four independently deployable services (ADR 0006/0007):
 | `ui` | `services/ui` (nginx) | auth + tools + assistant over the internal network | **yes** — the only published port |
 | `auth` | `services/auth` | its own Postgres | no |
 | `tools` | `services/tools` | its own Postgres; auth (JWKS) | no |
-| `assistant` | `services/assistant` | its own Postgres; auth (JWKS); tools (agent calls); api.anthropic.com | no |
+| `assistant` | `services/assistant` | its own Postgres; auth (JWKS); tools (agent calls); Ollama on the docker host (default) or api.anthropic.com (BYO key) | no |
 
 The browser only ever sees the UI origin. nginx inside the UI container proxies
 `/auth` + `/preferences` to the auth service, `/todos` + `/scribe` to the
@@ -27,6 +27,23 @@ open http://localhost:8080
 
 Each backend applies its own Prisma migrations on boot (`prisma migrate
 deploy`), so first start needs no manual DB step.
+
+## Local model (Ollama)
+
+By default the assistant uses a local model on the docker host instead of a
+hosted API (ADR 0007 addendum): `ASSISTANT_DEFAULT_BASE_URL` points at Ollama
+via `host.docker.internal:11434` and `ASSISTANT_DEFAULT_MODEL` picks the model.
+For that to work on the host:
+
+```bash
+ollama pull qwen3            # or whatever ASSISTANT_DEFAULT_MODEL names
+OLLAMA_HOST=0.0.0.0 ollama serve   # must listen beyond 127.0.0.1 so containers can reach it
+```
+
+Users can still paste their own Anthropic key (or another endpoint) in the
+assistant panel's settings — that overrides the default for them. To require
+bring-your-own-key instead, set both `ASSISTANT_DEFAULT_*` values to empty
+strings in `deploy/.env`.
 
 ## Multi-host (swarm / overlay network)
 

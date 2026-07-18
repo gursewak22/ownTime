@@ -3,11 +3,15 @@ info:
   title: ownTime assistant service
   version: 0.1.0
   description: |
-    The assistant service (ADR 0007): a bring-your-own-model agent that reads
-    and works the user's todo list by calling the tools service's `/todos` API
-    with the user's forwarded credentials. Each user configures a provider:
-    Anthropic's hosted API (API key), or any Anthropic-format endpoint (local
-    Ollama, a LiteLLM proxy) via a base URL + model name. API keys are stored
+    The assistant service (ADR 0007): an agent that reads and works the user's
+    todo list by calling the tools service's `/todos` API with the user's
+    forwarded credentials. The deployment can define a server-default model —
+    a local Ollama endpoint (`ASSISTANT_DEFAULT_BASE_URL` +
+    `ASSISTANT_DEFAULT_MODEL`) — used for every user without a stored provider
+    config, so the assistant works with no per-user setup. Each user may still
+    configure their own provider: Anthropic's hosted API (API key), or any
+    Anthropic-format endpoint (local Ollama, a LiteLLM proxy) via a base URL +
+    model name; that always overrides the server default. API keys are stored
     encrypted at rest and never returned by any endpoint (only a masked hint).
 
     Every route requires a Bearer access token issued by the auth service; this
@@ -186,18 +190,32 @@ components:
   schemas:
     ProviderStatus:
       type: object
-      required: [configured, hint, baseUrl, model]
+      required: [configured, hint, baseUrl, model, serverDefault]
       properties:
-        configured: { type: boolean }
+        configured:
+          type: boolean
+          description: >-
+            True when the assistant can run — the user has a stored config, or
+            the deployment defines a server-default model.
         hint:
           type: [string, 'null']
           description: Masked form of the stored key, e.g. `sk-ant-…x7Kq`.
         baseUrl:
           type: [string, 'null']
-          description: Endpoint override; null = Anthropic's hosted API.
+          description: The user's stored endpoint override; null = none stored.
         model:
           type: [string, 'null']
-          description: Model override; null = service default.
+          description: The user's stored model override; null = none stored.
+        serverDefault:
+          type: [object, 'null']
+          description: >-
+            The deployment's default model (a local Ollama endpoint), used when
+            the user has no stored config. Null when the deployment requires
+            bring-your-own-key.
+          required: [baseUrl, model]
+          properties:
+            baseUrl: { type: string }
+            model: { type: string }
     ChatMessage:
       type: object
       required: [id, userId, role, content, actions, createdAt]

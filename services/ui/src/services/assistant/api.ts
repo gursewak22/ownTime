@@ -1,10 +1,13 @@
 import { api } from '@/lib/api-client';
 
 export type ProviderStatus = {
+  /** True when the assistant can run: a stored user config or the server default. */
   configured: boolean;
   hint: string | null;
+  /** The user's stored endpoint/model only — the server default is reported separately. */
   baseUrl: string | null;
   model: string | null;
+  serverDefault: { baseUrl: string; model: string } | null;
 };
 
 export type SetProviderInput = {

@@ -7,11 +7,16 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { open, seal } from '../../common/crypto/secret-box';
 
+export type ServerDefault = { baseUrl: string; model: string };
+
 export type ProviderStatus = {
+  /** True when the assistant can run: a stored user config or the server default. */
   configured: boolean;
   hint: string | null;
+  /** The user's stored endpoint/model only — the server default is reported separately. */
   baseUrl: string | null;
   model: string | null;
+  serverDefault: ServerDefault | null;
 };
 
 /** Decrypted settings for internal use (the agent loop). Never expose over HTTP. */
@@ -46,13 +51,27 @@ export class ProviderService {
     return `${apiKey.slice(0, 7)}…${apiKey.slice(-4)}`;
   }
 
+  /** Env-level fallback (ADR 0007 addendum): a local Ollama endpoint used for
+   * users with no stored config. Both values must be set to activate it. */
+  serverDefault(): ServerDefault | null {
+    const baseUrl = this.config
+      .get<string>('ASSISTANT_DEFAULT_BASE_URL')
+      ?.trim()
+      .replace(/\/+$/, '');
+    const model = this.config.get<string>('ASSISTANT_DEFAULT_MODEL')?.trim();
+    return baseUrl && model ? { baseUrl, model } : null;
+  }
+
   async status(userId: string): Promise<ProviderStatus> {
     const row = await this.prisma.providerConfig.findUnique({ where: { userId } });
+    const serverDefault = this.serverDefault();
+    const userConfigured = row !== null && (row.ciphertext !== null || row.baseUrl !== null);
     return {
-      configured: row !== null && (row.ciphertext !== null || row.baseUrl !== null),
+      configured: userConfigured || serverDefault !== null,
       hint: row?.hint ?? null,
       baseUrl: row?.baseUrl ?? null,
       model: row?.model ?? null,
+      serverDefault,
     };
   }
 
@@ -84,6 +103,7 @@ export class ProviderService {
       hint,
       baseUrl,
       model,
+      serverDefault: this.serverDefault(),
     };
   }
 
@@ -93,7 +113,10 @@ export class ProviderService {
 
   async settings(userId: string): Promise<ProviderSettings | null> {
     const row = await this.prisma.providerConfig.findUnique({ where: { userId } });
-    if (!row || (row.ciphertext === null && row.baseUrl === null)) return null;
+    if (!row || (row.ciphertext === null && row.baseUrl === null)) {
+      const fallback = this.serverDefault();
+      return fallback ? { apiKey: null, ...fallback } : null;
+    }
     return {
       apiKey: row.ciphertext === null ? null : open(row.ciphertext, this.secret()),
       baseUrl: row.baseUrl,

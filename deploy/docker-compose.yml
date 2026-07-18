@@ -129,6 +129,14 @@ services:
       CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
       # Encrypts users' Anthropic API keys at rest; rotating it orphans stored keys.
       ASSISTANT_KEY_SECRET: ${ASSISTANT_KEY_SECRET:?set in deploy/.env (see .env.example)}
+      # Server-default model (ADR 0007 addendum): users without their own
+      # provider config use this Ollama endpoint on the docker host. Set both
+      # to empty strings in deploy/.env to require bring-your-own-key.
+      ASSISTANT_DEFAULT_BASE_URL: ${ASSISTANT_DEFAULT_BASE_URL-http://host.docker.internal:11434}
+      ASSISTANT_DEFAULT_MODEL: ${ASSISTANT_DEFAULT_MODEL-qwen3}
+    extra_hosts:
+      # Makes host.docker.internal resolve on Linux too (built in on Mac/Windows).
+      - "host.docker.internal:host-gateway"
     depends_on:
       assistant-db: { condition: service_healthy }
       auth: { condition: service_started }

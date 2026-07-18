@@ -14,7 +14,7 @@ Since **ADR 0006** the system is split into **independently deployable services*
 |------|--------|-------|
 | `services/auth/` | **active** | NestJS + Prisma + own Postgres. Google login, RS256 access tokens + JWKS, refresh rotation, and the per-user preferences store. Routes: `/auth`, `/preferences`. |
 | `services/tools/` | **active** | NestJS + Prisma + own Postgres. Todo + clock + stopwatch + scribe. Routes: `/todos`, `/scribe`. Verifies JWTs against the auth service's JWKS. |
-| `services/assistant/` | **active** | NestJS + Prisma + own Postgres. Bring-your-own-key Claude agent (ADR 0007): chat panel backend that works the user's todos by calling the tools service with the user's forwarded credential. Route: `/assistant`. Encrypts user API keys at rest (`ASSISTANT_KEY_SECRET`). |
+| `services/assistant/` | **active** | NestJS + Prisma + own Postgres. AI agent (ADR 0007): chat panel backend that works the user's todos by calling the tools service with the user's forwarded credential. Defaults to a local Ollama model (`ASSISTANT_DEFAULT_BASE_URL`/`_MODEL`); users can override with their own key/endpoint. Route: `/assistant`. Encrypts user API keys at rest (`ASSISTANT_KEY_SECRET`). |
 | `services/ui/` | **active** | The **UI service**: Vite + React + TS workspace shell. Deploys as nginx serving the build and reverse-proxying API paths to the services. |
 | `contracts/` | **active** | OpenAPI 3.1 spec per service — the source of truth for anything crossing a service boundary. Update the spec in the same PR as the endpoint. |
 | `deploy/` | **active** | docker-compose for the full stack (overlay-ready network). See `deploy/README.md`. |

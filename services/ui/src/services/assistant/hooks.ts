@@ -32,13 +32,9 @@ export function useDeleteProvider() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => assistantApi.deleteProvider(),
-    onSuccess: () =>
-      queryClient.setQueryData(providerKey(userId), {
-        configured: false,
-        hint: null,
-        baseUrl: null,
-        model: null,
-      }),
+    // Post-reset state depends on whether the server has a default model —
+    // refetch rather than guess.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: providerKey(userId) }),
   });
 }
 

@@ -8,10 +8,11 @@ function errorText(error: unknown): string {
 }
 
 /**
- * Configure which model the agent talks to. Hosted Anthropic = paste an API
- * key and leave the endpoint empty. Local/other models = point the endpoint at
- * any Anthropic-format server (Ollama, or a LiteLLM proxy for Gemini/OpenAI)
- * and name the model.
+ * Configure which model the agent talks to. When the deployment defines a
+ * server-default model (local Ollama), no setup is needed and this form is an
+ * override. Hosted Anthropic = paste an API key and leave the endpoint empty.
+ * Local/other models = point the endpoint at any Anthropic-format server
+ * (Ollama, or a LiteLLM proxy for Gemini/OpenAI) and name the model.
  */
 export function ProviderSettings({ onSaved }: { onSaved?: () => void }) {
   const status = useProviderStatus();
@@ -49,6 +50,14 @@ export function ProviderSettings({ onSaved }: { onSaved?: () => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-3">
+      {status.data?.serverDefault && (
+        <p className="text-sm text-muted">
+          This server runs a local model by default —{' '}
+          <span className="font-mono">{status.data.serverDefault.model}</span> via Ollama at{' '}
+          <span className="font-mono">{status.data.serverDefault.baseUrl}</span>. Leave
+          everything empty to use it, or save your own settings below to override.
+        </p>
+      )}
       <p className="text-sm text-muted">
         Use Anthropic's API (paste a key, leave the endpoint empty) or any
         Anthropic-format endpoint — e.g. local Ollama at{' '}
@@ -99,7 +108,7 @@ export function ProviderSettings({ onSaved }: { onSaved?: () => void }) {
         >
           {setProvider.isPending ? 'Saving…' : 'Save'}
         </Button>
-        {status.data?.configured && (
+        {status.data && (status.data.hint !== null || status.data.baseUrl !== null) && (
           <Button
             type="button"
             variant="ghost"
