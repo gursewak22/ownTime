@@ -3,8 +3,8 @@ import { isDevMode, useAuthStore } from './auth-store';
 import type { AuthSession } from './auth-store';
 import { getCurrentUserId, useUserStore } from './user-store';
 
-// Default is same-origin: the UI service proxies /auth, /preferences, /todos
-// and /scribe to the backend services (nginx in prod, Vite proxy in dev), so
+// Default is same-origin: the UI service proxies /auth, /preferences, /todos,
+// /scribe and /assistant to the backend services (nginx in prod, Vite proxy in dev), so
 // the browser never needs to know where services live. Set VITE_API_URL only
 // to bypass the proxy and hit one origin directly.
 const API_URL = import.meta.env.VITE_API_URL || window.location.origin;

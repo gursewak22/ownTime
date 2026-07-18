@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// The assistant service owns no User table: identity lives in the auth service
+// and arrives as the verified JWT `sub` claim (ADR 0006). userId is therefore a
+// plain scoping column — no FK to enforce across service databases.
+
+// One row per user: which model endpoint the agent talks to. All fields
+// optional so the same shape covers hosted Anthropic (key, no baseUrl) and
+// local/proxied Anthropic-compatible endpoints like Ollama or LiteLLM
+// (baseUrl + model, key usually absent).
+model ProviderConfig {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  ciphertext String? // AES-256-GCM sealed API key (see common/crypto); null for keyless local endpoints
+  hint       String? // masked display form, e.g. "sk-ant-…x7Kq" — never the key itself
+  baseUrl    String? // Anthropic-format endpoint override; null = api.anthropic.com
+  model      String? // model name override; null = the service default
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String // 'user' | 'assistant'
+  content   String
+  actions   Json     @default("[]") // tool activity behind an assistant turn: [{tool, detail}]
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

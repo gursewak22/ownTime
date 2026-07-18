@@ -14,15 +14,16 @@ Since **ADR 0006** the system is split into **independently deployable services*
 |------|--------|-------|
 | `services/auth/` | **active** | NestJS + Prisma + own Postgres. Google login, RS256 access tokens + JWKS, refresh rotation, and the per-user preferences store. Routes: `/auth`, `/preferences`. |
 | `services/tools/` | **active** | NestJS + Prisma + own Postgres. Todo + clock + stopwatch + scribe. Routes: `/todos`, `/scribe`. Verifies JWTs against the auth service's JWKS. |
+| `services/assistant/` | **active** | NestJS + Prisma + own Postgres. Bring-your-own-key Claude agent (ADR 0007): chat panel backend that works the user's todos by calling the tools service with the user's forwarded credential. Route: `/assistant`. Encrypts user API keys at rest (`ASSISTANT_KEY_SECRET`). |
 | `services/ui/` | **active** | The **UI service**: Vite + React + TS workspace shell. Deploys as nginx serving the build and reverse-proxying API paths to the services. |
 | `contracts/` | **active** | OpenAPI 3.1 spec per service — the source of truth for anything crossing a service boundary. Update the spec in the same PR as the endpoint. |
 | `deploy/` | **active** | docker-compose for the full stack (overlay-ready network). See `deploy/README.md`. |
 | `mobile/` | empty | Mobile client, stack not yet chosen. |
-| `docs/adr/` | active | **Read 0001+0004+0006 before changing any backend service; 0002+0003 before changing the frontend; 0004+0005 before changing anything auth-related; 0006 before changing service boundaries, contracts, or deploy topology.** |
+| `docs/adr/` | active | **Read 0001+0004+0006 before changing any backend service; 0002+0003 before changing the frontend; 0004+0005 before changing anything auth-related; 0006 before changing service boundaries, contracts, or deploy topology; 0007 before changing the assistant service or agent behavior.** |
 
 Treat every service as a separate sub-project with its own toolchain, lockfile, and database. **There is no shared code between services** (ADR 0006 #8) — scaffolding is deliberately duplicated.
 
-## Backend services (`services/auth/`, `services/tools/`)
+## Backend services (`services/auth/`, `services/tools/`, `services/assistant/`)
 
 **Stack:** TypeScript + NestJS, Prisma ORM, PostgreSQL (one instance per service, Docker Compose for local dev). Foundational decisions live in ADR 0001; the service split in ADR 0006 — consult them before proposing alternatives.
 
@@ -31,7 +32,7 @@ Treat every service as a separate sub-project with its own toolchain, lockfile, 
 ```bash
 cd services/<name>
 cp .env.example .env
-docker compose up -d              # that service's Postgres (auth :5433, tools :5434)
+docker compose up -d              # that service's Postgres (auth :5433, tools :5434, assistant :5435)
 npm install
 npx prisma migrate dev            # also runs `prisma generate`
 ```
@@ -40,7 +41,7 @@ npx prisma migrate dev            # also runs `prisma generate`
 
 | Command | What it does |
 |---|---|
-| `npm run start:dev` | watch mode — auth on `:3001`, tools on `:3002` (via `.env` PORT) |
+| `npm run start:dev` | watch mode — auth on `:3001`, tools on `:3002`, assistant on `:3003` (via `.env` PORT) |
 | `npm run build` / `npm run typecheck` | compile to `dist/` / `tsc --noEmit` |
 | `npx prisma migrate dev --name <name>` | create + apply a migration (this service's DB only) |
 | `npx prisma studio` | DB browser for this service's database |
@@ -104,11 +105,11 @@ npm install
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Vite dev server on `http://localhost:5173` (proxies `/auth`,`/preferences` → :3001 and `/todos`,`/scribe` → :3002) |
+| `npm run dev` | Vite dev server on `http://localhost:5173` (proxies `/auth`,`/preferences` → :3001, `/todos`,`/scribe` → :3002, `/assistant` → :3003) |
 | `npm run build` | Type-check + production build to `dist/` |
 | `npm run typecheck` | `tsc --noEmit` |
 
-Both backend services must be running for the UI to load data.
+All backend services must be running for the UI to load data (the assistant panel additionally needs :3003).
 
 ### Architecture (the part that matters when adding code)
 

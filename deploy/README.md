@@ -1,23 +1,26 @@
 # Deploying ownTime
 
-ownTime ships as three independently deployable services (ADR 0006):
+ownTime ships as four independently deployable services (ADR 0006/0007):
 
 | Service | Image source | Talks to | Exposed |
 |---------|-------------|----------|---------|
-| `ui` | `services/ui` (nginx) | auth + tools over the internal network | **yes** — the only published port |
+| `ui` | `services/ui` (nginx) | auth + tools + assistant over the internal network | **yes** — the only published port |
 | `auth` | `services/auth` | its own Postgres | no |
 | `tools` | `services/tools` | its own Postgres; auth (JWKS) | no |
+| `assistant` | `services/assistant` | its own Postgres; auth (JWKS); tools (agent calls); api.anthropic.com | no |
 
 The browser only ever sees the UI origin. nginx inside the UI container proxies
-`/auth` + `/preferences` to the auth service and `/todos` + `/scribe` to the
-tools service; the tools service verifies access tokens by fetching the auth
-service's JWKS. All of that traffic stays on the internal Docker network.
+`/auth` + `/preferences` to the auth service, `/todos` + `/scribe` to the
+tools service, and `/assistant` to the assistant service; the backends verify
+access tokens by fetching the auth service's JWKS. Apart from the assistant's
+outbound calls to Anthropic, all of that traffic stays on the internal Docker
+network.
 
 ## Single-host (docker compose)
 
 ```bash
 cd deploy
-cp .env.example .env    # set GOOGLE_CLIENT_ID + AUTH_JWT_PRIVATE_KEY
+cp .env.example .env    # set GOOGLE_CLIENT_ID + AUTH_JWT_PRIVATE_KEY + ASSISTANT_KEY_SECRET
 docker compose up -d --build
 open http://localhost:8080
 ```
@@ -43,8 +46,9 @@ networks:
 
 and deploy with `docker stack deploy` (or run compose per host attached to the
 same overlay network). Service discovery keeps working because everything
-addresses `auth`, `tools`, `auth-db`, `tools-db` by Docker DNS name — nothing
-crosses the public internet except the UI's published port.
+addresses `auth`, `tools`, `assistant` and their `-db` companions by Docker DNS
+name — nothing crosses the public internet except the UI's published port and
+the assistant service's outbound calls to api.anthropic.com.
 
 ## Things that bite
 

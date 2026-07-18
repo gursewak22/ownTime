@@ -1,0 +1,242 @@
+openapi: 3.1.0
+info:
+  title: ownTime assistant service
+  version: 0.1.0
+  description: |
+    The assistant service (ADR 0007): a bring-your-own-model agent that reads
+    and works the user's todo list by calling the tools service's `/todos` API
+    with the user's forwarded credentials. Each user configures a provider:
+    Anthropic's hosted API (API key), or any Anthropic-format endpoint (local
+    Ollama, a LiteLLM proxy) via a base URL + model name. API keys are stored
+    encrypted at rest and never returned by any endpoint (only a masked hint).
+
+    Every route requires a Bearer access token issued by the auth service; this
+    service verifies it against the auth JWKS over the internal network and
+    scopes all data by the token's `sub`.
+
+    Route prefix owned by this service (the UI service proxies it here):
+    `/assistant`.
+servers:
+  - url: http://assistant:3000
+    description: internal deploy network (Docker DNS)
+  - url: http://localhost:3003
+    description: local development
+
+tags:
+  - name: provider
+  - name: chat
+
+paths:
+  /assistant/provider:
+    get:
+      tags: [provider]
+      operationId: getProviderStatus
+      summary: The user's model config (masked key hint only)
+      responses:
+        '200':
+          description: Provider status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [provider]
+      operationId: setProvider
+      summary: Store (or replace) the user's model config
+      description: |
+        Declarative save of the settings form. `apiKey` omitted keeps the
+        currently stored key (it is never sent back to the client); `baseUrl`
+        and `model` omitted are cleared. At least one of a stored/provided key
+        or a `baseUrl` is required. Keys are encrypted with AES-256-GCM before
+        they reach the database.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apiKey:
+                  type: string
+                  minLength: 8
+                  maxLength: 512
+                  description: API key for the endpoint (starts with `sk-`). Optional for keyless local endpoints.
+                baseUrl:
+                  type: string
+                  maxLength: 500
+                  description: Anthropic-format endpoint override, e.g. `http://localhost:11434` (Ollama) or a LiteLLM proxy. Omitted = Anthropic's hosted API.
+                model:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Model name override. Omitted = service default (`claude-opus-4-8`).
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderStatus' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [provider]
+      operationId: deleteProvider
+      summary: Remove the stored model config (key included)
+      responses:
+        '200':
+          description: Removed (idempotent).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /assistant/chat:
+    get:
+      tags: [chat]
+      operationId: getChatHistory
+      summary: The user's chat history (oldest first, capped at 200 messages)
+      responses:
+        '200':
+          description: Messages.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChatMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [chat]
+      operationId: sendChatMessage
+      summary: Send a message and run the agent
+      description: |
+        Runs the Claude agent loop synchronously (the agent may make several
+        tool calls against the tools service, acting with this request's
+        forwarded credentials) — responses can take tens of seconds. Returns
+        the persisted user + assistant messages. Nothing is persisted when the
+        run fails, so a failed send can simply be retried.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        '200':
+          description: The exchange.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages]
+                properties:
+                  messages:
+                    type: array
+                    description: The persisted user message followed by the assistant reply.
+                    items: { $ref: '#/components/schemas/ChatMessage' }
+        '400':
+          description: Validation failure, no model configured, or the provider rejected the key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502':
+          description: Upstream model endpoint failure (rate limit, outage, unreachable local endpoint).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [chat]
+      operationId: clearChatHistory
+      summary: Delete the user's chat history
+      responses:
+        '200':
+          description: Cleared.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token issued by the auth service; verified here against
+        `GET {auth}/auth/.well-known/jwks.json` (env AUTH_JWKS_URL). In
+        non-production dev runs with AUTH_ALLOW_DEV_HEADER=true, an
+        `x-user-id: <id>` header may be sent instead. The same credential is
+        forwarded to the tools service for the agent's tool calls.
+
+  schemas:
+    ProviderStatus:
+      type: object
+      required: [configured, hint, baseUrl, model]
+      properties:
+        configured: { type: boolean }
+        hint:
+          type: [string, 'null']
+          description: Masked form of the stored key, e.g. `sk-ant-…x7Kq`.
+        baseUrl:
+          type: [string, 'null']
+          description: Endpoint override; null = Anthropic's hosted API.
+        model:
+          type: [string, 'null']
+          description: Model override; null = service default.
+    ChatMessage:
+      type: object
+      required: [id, userId, role, content, actions, createdAt]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        role:
+          type: string
+          enum: [user, assistant]
+        content: { type: string }
+        actions:
+          type: array
+          description: Tool activity behind an assistant turn (empty for user turns).
+          items:
+            type: object
+            required: [tool, detail]
+            properties:
+              tool: { type: string }
+              detail: { type: string }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid credentials.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Body failed class-validator rules.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

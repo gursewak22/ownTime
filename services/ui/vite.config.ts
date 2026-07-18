@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 // ever talks to this origin; path prefixes fan out to the backend services.
 const AUTH_TARGET = process.env.AUTH_TARGET ?? 'http://localhost:3001';
 const TOOLS_TARGET = process.env.TOOLS_TARGET ?? 'http://localhost:3002';
+const ASSISTANT_TARGET = process.env.ASSISTANT_TARGET ?? 'http://localhost:3003';
 
 export default defineConfig({
   plugins: [react()],
@@ -21,6 +22,7 @@ export default defineConfig({
       '/preferences': AUTH_TARGET,
       '/todos': TOOLS_TARGET,
       '/scribe': TOOLS_TARGET,
+      '/assistant': ASSISTANT_TARGET,
     },
   },
 });
