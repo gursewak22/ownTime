@@ -3,6 +3,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema';
 import { ProviderSettings } from '../provider/provider.service';
 import { ForwardedAuth, TodoClient } from './todo-client';
+import { ScribeClient, TiptapDoc } from './scribe-client';
+import { markdownToDoc } from './markdown-to-doc';
 
 export type AgentAction = { tool: string; detail: string };
 
@@ -25,6 +27,12 @@ When the user asks you to complete their tasks (or "the feasible ones"):
 3. For each feasible todo: do the work, present the finished result in your reply, then mark that todo done.
 4. Never mark a todo done without having actually produced the work it asks for. For todos you skip, give the reason in one short line.
 
+Saving work to Scribe (the user's notes tool):
+- When the user asks you to put your output "in Scribe", "in a note/doc", or "as a markdown file", use the scribe tools instead of only replying in chat.
+- Write the content as **Markdown** (headings, lists, bold/italic, code blocks, links) — it is converted to a formatted Scribe note. Give the note a short descriptive title.
+- Create a new note with create_scribe_note unless the user points you at an existing one; use list_scribe_notes to find it, then append_to_scribe_note to add to it.
+- After saving, tell the user the note's title; keep your chat reply brief rather than repeating the whole document.
+
 Other guidance:
 - Only delete todos when the user explicitly asks you to.
 - Use your tools to check the list rather than assuming its contents.
@@ -32,7 +40,10 @@ Other guidance:
 
 @Injectable()
 export class AgentService {
-  constructor(private readonly todos: TodoClient) {}
+  constructor(
+    private readonly todos: TodoClient,
+    private readonly scribe: ScribeClient,
+  ) {}
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
     const { apiKey, baseUrl, model } = input.provider;
@@ -167,6 +178,78 @@ export class AgentService {
             await this.todos.delete(auth, args.id);
             record('delete_todo', `Deleted todo ${args.id}`);
             return 'Deleted.';
+          } catch (error) {
+            return fail(error);
+          }
+        },
+      }),
+      betaTool({
+        name: 'list_scribe_notes',
+        description:
+          "List the user's Scribe notes as JSON (id, title, updatedAt), most recently updated first. Use this to find a note to append to.",
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          additionalProperties: false,
+        } as const,
+        run: async () => {
+          try {
+            const notes = await this.scribe.list(auth);
+            record('list_scribe_notes', `Read ${notes.length} note(s)`);
+            return JSON.stringify(
+              notes.map((n) => ({ id: n.id, title: n.title, updatedAt: n.updatedAt })),
+            );
+          } catch (error) {
+            return fail(error);
+          }
+        },
+      }),
+      betaTool({
+        name: 'create_scribe_note',
+        description:
+          'Create a Scribe note and fill it with Markdown content (headings, lists, bold/italic, code blocks, links are supported and rendered as a formatted note). Use this to save written work into the notes tool instead of only replying in chat.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Short note title (max 200 chars)' },
+            markdown: { type: 'string', description: 'The note body as Markdown' },
+          },
+          required: ['title', 'markdown'],
+          additionalProperties: false,
+        } as const,
+        run: async (args) => {
+          try {
+            const note = await this.scribe.create(auth, args.title);
+            await this.scribe.update(auth, note.id, { doc: markdownToDoc(args.markdown) });
+            record('create_scribe_note', `Wrote note "${args.title}"`);
+            return JSON.stringify({ id: note.id, title: args.title });
+          } catch (error) {
+            return fail(error);
+          }
+        },
+      }),
+      betaTool({
+        name: 'append_to_scribe_note',
+        description:
+          'Append Markdown content to the end of an existing Scribe note (found via list_scribe_notes). The existing content is kept.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Note id from list_scribe_notes' },
+            markdown: { type: 'string', description: 'Markdown to append to the note' },
+          },
+          required: ['id', 'markdown'],
+          additionalProperties: false,
+        } as const,
+        run: async (args) => {
+          try {
+            const note = await this.scribe.get(auth, args.id);
+            const existing = Array.isArray(note.doc?.content) ? note.doc.content : [];
+            const appended = markdownToDoc(args.markdown).content;
+            const doc: TiptapDoc = { type: 'doc', content: [...existing, ...appended] };
+            const updated = await this.scribe.update(auth, args.id, { doc });
+            record('append_to_scribe_note', `Appended to "${updated.title}"`);
+            return JSON.stringify({ id: args.id, title: updated.title });
           } catch (error) {
             return fail(error);
           }

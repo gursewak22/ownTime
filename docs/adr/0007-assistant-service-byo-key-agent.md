@@ -86,3 +86,16 @@ clearing both env values restores strict BYO-key behavior.
 `contracts/assistant.openapi.yaml`) so the UI can say which model is in use.
 The outbound-internet consequence above now applies only when a user brings a
 hosted API key.
+
+## Addendum (2026-07-19): Scribe as an output surface
+
+Per decision #6 (MCP readiness — the tool set is one internal registry), the
+agent gained Scribe tools alongside the todo tools: `list_scribe_notes`,
+`create_scribe_note`, and `append_to_scribe_note`. They call the **tools
+service's** existing `/scribe/notes` API with the user's forwarded credential
+(no new contract surface — the assistant's own routes are unchanged). The agent
+writes content as Markdown, which the assistant converts to the TipTap/
+ProseMirror doc Scribe stores (`services/assistant/src/services/chat/
+markdown-to-doc.ts`, the inverse of the UI's `docToMarkdown` export, covering
+the same StarterKit subset). This lets the user say "save that to a note"
+instead of only receiving chat text. No new secret, DB, or egress is involved.
