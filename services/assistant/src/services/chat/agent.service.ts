@@ -31,7 +31,9 @@ Saving work to Scribe (the user's notes tool). "Scribe" is the notes tool, and t
 - Treat ALL of these as an instruction to CALL create_scribe_note (do not just reply in chat): "draft/write/make/start a scribe", "a new scribe", "a note about X", "a doc for X", "put/save this in Scribe / in a note / as a markdown file", or any request to draft a document. When the user names a topic and the word scribe/note/doc, you MUST create the note.
 - The work goes IN the note, not in the chat. First produce the full content, then call create_scribe_note with a short descriptive title and that content — do not answer with the document text alone.
 - Write the content as **Markdown** (headings, lists, bold/italic, code blocks, links) — it is converted to a formatted Scribe note.
-- Create a new note with create_scribe_note unless the user points you at an existing one; use list_scribe_notes to find it, then append_to_scribe_note to add to it.
+- Create a new note with create_scribe_note for fresh work.
+- REVISING existing work (the user says "that's not right", "make it shorter/longer", "revise it", "fix it", or asks for another version of something you already saved to a note): call list_scribe_notes to find that note, then call update_scribe_note to REPLACE its content with the new version. Do not create a second note and do not just append. Editing the text in your chat reply does NOT change the note — you must call the tool.
+- NEVER tell the user you saved, created, updated, or revised a note unless you actually called a scribe tool in THIS reply. If you did not call the tool, do not claim the note was saved — say you have the draft ready and ask if they want it saved.
 - After saving, tell the user the note's title; keep your chat reply brief rather than repeating the whole document.
 
 Other guidance:
@@ -232,7 +234,7 @@ export class AgentService {
       betaTool({
         name: 'append_to_scribe_note',
         description:
-          'Append Markdown content to the end of an existing Scribe note (found via list_scribe_notes). The existing content is kept.',
+          'Append Markdown content to the end of an existing Scribe note (found via list_scribe_notes). The existing content is kept. Use this to ADD to a note.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -250,6 +252,32 @@ export class AgentService {
             const doc: TiptapDoc = { type: 'doc', content: [...existing, ...appended] };
             const updated = await this.scribe.update(auth, args.id, { doc });
             record('append_to_scribe_note', `Appended to "${updated.title}"`);
+            return JSON.stringify({ id: args.id, title: updated.title });
+          } catch (error) {
+            return fail(error);
+          }
+        },
+      }),
+      betaTool({
+        name: 'update_scribe_note',
+        description:
+          "REPLACE an existing Scribe note's content with new Markdown (found via list_scribe_notes). Use this to revise, rewrite, shorten, or correct a note — the previous content is overwritten. Optionally rename it too.",
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Note id from list_scribe_notes' },
+            markdown: { type: 'string', description: 'The new full note body as Markdown (replaces the old content)' },
+            title: { type: 'string', description: 'New title (optional; omit to keep the current one)' },
+          },
+          required: ['id', 'markdown'],
+          additionalProperties: false,
+        } as const,
+        run: async (args) => {
+          try {
+            const patch: { doc: TiptapDoc; title?: string } = { doc: markdownToDoc(args.markdown) };
+            if (args.title) patch.title = args.title;
+            const updated = await this.scribe.update(auth, args.id, patch);
+            record('update_scribe_note', `Revised "${updated.title}"`);
             return JSON.stringify({ id: args.id, title: updated.title });
           } catch (error) {
             return fail(error);
