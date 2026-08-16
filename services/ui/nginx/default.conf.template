@@ -37,6 +37,13 @@ server {
         include /etc/nginx/proxy-common.conf;
     }
 
+    location /assistant/ {
+        proxy_pass ${ASSISTANT_UPSTREAM};
+        include /etc/nginx/proxy-common.conf;
+        # Agent runs block on the Anthropic API and can far outlast the 60s default.
+        proxy_read_timeout 300s;
+    }
+
     # Hashed build assets are immutable; cache hard.
     location /assets/ {
         add_header Cache-Control "public, max-age=31536000, immutable";

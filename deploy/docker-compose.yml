@@ -1,9 +1,10 @@
-# Full ownTime stack: three independently deployable services (ADR 0006), each
-# backend with its own Postgres. Only the UI publishes a port; every service→
-# service hop (nginx proxying, JWKS fetches) stays on the internal network.
+# Full ownTime stack: four independently deployable services (ADR 0006/0007),
+# each backend with its own Postgres. Only the UI publishes a port; every
+# service→service hop (nginx proxying, JWKS fetches, the assistant's tools
+# calls) stays on the internal network.
 #
 # Quick start:
-#   cd deploy && cp .env.example .env   # fill in the two required values
+#   cd deploy && cp .env.example .env   # fill in the three required values
 #   docker compose up -d --build
 #   open http://localhost:8080
 #
@@ -23,6 +24,7 @@ networks:
 volumes:
   auth_pgdata:
   tools_pgdata:
+  assistant_pgdata:
 
 services:
   # --- auth service: identity, sessions/JWKS, preferences -------------------
@@ -99,6 +101,54 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- assistant service: bring-your-own-key Claude agent (ADR 0007) --------
+  assistant-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: owntime
+      POSTGRES_PASSWORD: ${ASSISTANT_DB_PASSWORD:-owntime}
+      POSTGRES_DB: owntime_assistant
+    volumes:
+      - assistant_pgdata:/var/lib/postgresql/data
+    networks: [owntime_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owntime -d owntime_assistant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  assistant:
+    build: ../services/assistant
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://owntime:${ASSISTANT_DB_PASSWORD:-owntime}@assistant-db:5432/owntime_assistant?schema=public
+      AUTH_JWKS_URL: http://auth:3000/auth/.well-known/jwks.json
+      TOOLS_URL: http://tools:3000
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      # Encrypts users' Anthropic API keys at rest; rotating it orphans stored keys.
+      ASSISTANT_KEY_SECRET: ${ASSISTANT_KEY_SECRET:?set in deploy/.env (see .env.example)}
+      # Server-default model (ADR 0007 addendum): users without their own
+      # provider config use this Ollama endpoint on the docker host. Set both
+      # to empty strings in deploy/.env to require bring-your-own-key.
+      ASSISTANT_DEFAULT_BASE_URL: ${ASSISTANT_DEFAULT_BASE_URL-http://host.docker.internal:11434}
+      ASSISTANT_DEFAULT_MODEL: ${ASSISTANT_DEFAULT_MODEL-qwen3}
+    extra_hosts:
+      # Makes host.docker.internal resolve on Linux too (built in on Mac/Windows).
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      assistant-db: { condition: service_healthy }
+      auth: { condition: service_started }
+      tools: { condition: service_started }
+    networks: [owntime_net]
+    healthcheck:
+      # 401 (guard alive, no creds) still proves the service is up.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/assistant/key').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # --- UI service: static SPA + reverse proxy (the only published port) -----
   ui:
     build:
@@ -109,7 +159,8 @@ services:
     environment:
       AUTH_UPSTREAM: http://auth:3000
       TOOLS_UPSTREAM: http://tools:3000
+      ASSISTANT_UPSTREAM: http://assistant:3000
     ports:
       - "${UI_PORT:-8080}:80"
-    depends_on: [auth, tools]
+    depends_on: [auth, tools, assistant]
     networks: [owntime_net]

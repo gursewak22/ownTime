@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { assistantModule } from './assistant';
 import { clockModule } from './clock';
 import { scribeModule } from './scribe';
 import { todoModule } from './todo';
@@ -18,7 +19,7 @@ export type ServiceModule = {
   singleton?: boolean;
 };
 
-export const services: ServiceModule[] = [todoModule, clockModule, scribeModule];
+export const services: ServiceModule[] = [todoModule, clockModule, scribeModule, assistantModule];
 
 export function getService(id: string): ServiceModule | undefined {
   return services.find((s) => s.id === id);
